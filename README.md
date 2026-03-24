@@ -33,7 +33,7 @@ Hệ thống multi-agent kiểm chứng tin thật/giả tiếng Việt.
 | **GPU** | ❌ Không cần (gọi API cloud) |
 | **Python** | >= 3.10 |
 | **Internet** | ✅ Cần |
-| **API Keys** | Groq + Google Gemini + HuggingFace (LLM) · Tavily (Search) · MongoDB Atlas (Cache) |
+| **API Keys** | Groq + Google Gemini (LLM) · Tavily (Search) · MongoDB Atlas (Cache) |
 
 ---
 
@@ -48,11 +48,10 @@ pip install -r requirements.txt
 copy .env.example .env
 
 # 3. Điền API keys vào .env:
-#    - AGENT1_API_KEY : Groq API key     → https://console.groq.com/keys
-#    - AGENT2_API_KEY : Google Gemini key → https://aistudio.google.com/apikey
-#    - AGENT3_API_KEY : HuggingFace token→ https://huggingface.co/settings/tokens
-#    - TAVILY_API_KEY : Tavily key        → https://app.tavily.com
-#    - MONGODB_URI    : MongoDB Atlas URI → https://cloud.mongodb.com
+#    - AGENT1_API_KEY   : Groq API key      → https://console.groq.com/keys
+#    - GEMINI_POOL_KEYS : Cụm thẻ Gemini   → Chống Rate Limit 429 (Mới)
+#    - TAVILY_API_KEY   : Tavily key        → Cào web thời gian thực
+#    - MONGODB_URI      : MongoDB Atlas URI → Lưu trữ Vector Cache
 
 # 4. Chạy CLI (terminal)
 python main.py
@@ -70,7 +69,7 @@ streamlit run app.py
 python main.py
 
 # Chạy một lần
-python main.py --query "Việt Nam vô địch AFF Cup 2024"
+python main.py --query "Việt Nam đạt á quân AFF Cup 2024"
 
 # Xuất JSON (dùng cho scripting/API)
 python main.py --query "..." --json
@@ -90,8 +89,8 @@ streamlit run app.py
                      └──────┬──────────────────────────────┬───────────┘
                             │ HIT → trả kết quả < 2s      │ MISS → chạy pipeline
                             ▼                              ▼
-User Input ──▶ Cache Check ──▶ Agent 1 ──▶ Agent 2 ──▶ Agent 3 ──▶ Verdict
-                               (Groq)     (Gemini)    (HuggingFace)
+User Input ──▶ Normalizer ──▶ Cache Check ──▶ Agent 1 ──▶ Agent 2 ──▶ Agent 3 ──▶ Verdict
+                 (Groq)                        (Groq)     (Gemini)    (Gemini/HF)
                                  │
                                  ├─ Tavily API (primary — nhanh, không bị block)
                                  ├─   General search + Gov-focused search (song song)
@@ -99,12 +98,12 @@ User Input ──▶ Cache Check ──▶ Agent 1 ──▶ Agent 2 ──▶ A
 ```
 
 **Cách hoạt động:**
-1. Bạn nhập tin tức cần kiểm chứng
-2. **Semantic Cache** kiểm tra MongoDB — nếu câu tương tự đã hỏi → trả kết quả **trong < 2 giây**
+1. **Query Normalizer:** LLM Groq chuẩn hóa tin tức cần kiểm chứng, trích xuất con số cốt lõi.
+2. **Semantic Cache** kiểm tra MongoDB — nếu câu tương tự đã hỏi → Groq tự động **Dynamic Rewrite** kết hợp văn phong mới và trả kết quả **trong < 2 giây**.
 3. Nếu Cache MISS:
-   - **Agent 1 (Groq)** phân tích tin → tạo 3 search queries → Tavily search (2 luồng song song) → lấy full content
-   - **Agent 2 (Gemini)** đọc toàn bộ nội dung (tới 100,000 ký tự) → trích xuất facts → đánh giá nguồn → phát hiện mâu thuẫn
-   - **Agent 3 (HuggingFace Qwen-72B)** suy luận → đưa ra **luận điểm + dẫn chứng + link nguồn** → phán định THẬT/GIẢ
+   - **Agent 1 (Groq)** phân tích tin → tạo 3 search queries → Tavily search (2 luồng song song) → lấy full content.
+   - **Agent 2 (Gemini)** đọc toàn bộ nội dung (tới 100,000 ký tự) → trích xuất facts → phân loại độ uy tín nguồn (Cấp 1/2/3).
+   - **Agent 3 (Gemini/HuggingFace)** suy luận và đưa ra Phán định chính thức (THẬT/GIẢ) kèm Bằng chứng + URL chống Hallucination.
 4. Kết quả được **lưu vào Cache** cho lần sau
 5. Hiển thị trên terminal (Rich formatting) hoặc Web UI (Streamlit)
 
@@ -118,7 +117,7 @@ Hệ thống sử dụng **3 nhà cung cấp LLM khác nhau** cho 3 Agent, mỗi
 |-------|----------|-------|------------|
 | **Agent 1** — Query | **Groq** | `llama-3.1-8b-instant` | Tốc độ cực nhanh (~0.5s), chỉ cần sinh keywords |
 | **Agent 2** — Extractor | **Google Gemini** | `gemini-2.5-flash` | Context 1M token, đọc 5–10 bài báo dài cùng lúc không nghẽn |
-| **Agent 3** — Reasoning | **HuggingFace** | `Qwen/Qwen2.5-72B-Instruct` | 72 tỷ tham số, suy luận logic tiếng Việt sắc bén nhất |
+| **Agent 3** — Reasoning | **Google Gemini** | `gemini-2.5-flash` | Khả năng lập luận logic cực mạnh, sinh cấu trúc JSON ổn định |
 
 ### Tại sao Mix-AI?
 - **Lách Rate Limit miễn phí:** 3 API key từ 3 provider = gấp 3 lần tài nguyên, không bao giờ bị lỗi `429 Too Many Requests`
@@ -157,7 +156,7 @@ Hệ thống sử dụng **3 nhà cung cấp LLM khác nhau** cho 3 Agent, mỗi
 | | Chi tiết |
 |--|---------|
 | **Vai trò** | Suy luận có luận điểm → Phán định cuối cùng |
-| **LLM** | HuggingFace `Qwen/Qwen2.5-72B-Instruct` — 72B params, suy luận sâu |
+| **LLM** | Google Gemini `gemini-2.5-flash` — suy luận logic sâu, ổn định |
 | **Verdict** | THẬT · GIẢ · CHƯA XÁC ĐỊNH · MỘT PHẦN ĐÚNG |
 | **Output** | Verdict + confidence + **luận điểm chi tiết** (tiêu đề + dẫn chứng + link) + nguồn |
 
@@ -173,7 +172,7 @@ User Query → Embedding (vietnamese-sbert) → Vector Search (MongoDB Atlas)
                                     ┌───────────────┴───────────────┐
                                     │ Cosine > 0.90?                │
                                     │  YES → NER Compare            │
-                                    │    (số, ngày, tên, địa danh)  │
+                                    │    (Chỉ kiểm tra Con Số)      │
                                     │    Khớp 100%? → CACHE HIT ⚡  │
                                     │    Không khớp? → CACHE MISS   │
                                     │  NO → CACHE MISS              │
@@ -183,7 +182,7 @@ User Query → Embedding (vietnamese-sbert) → Vector Search (MongoDB Atlas)
 | Lớp | Mục đích | Công nghệ |
 |-----|----------|-----------|
 | **Lớp 1 (Recall)** | Tìm câu hỏi tương đồng | MongoDB Atlas Vector Search (cosine > 0.90) |
-| **Lớp 2 (Precision)** | Xác nhận chính xác | Underthesea NER + Regex (số, ngày, tên người, địa danh) |
+| **Lớp 2 (Precision)** | Xác nhận chính xác | Trích xuất Subset (dò quét 100% các thông số tiền tệ, thời gian, con số) |
 
 ### Cấu hình MongoDB Atlas
 1. Tạo cluster miễn phí tại [MongoDB Atlas](https://cloud.mongodb.com)
@@ -315,15 +314,15 @@ Multi-Agentic/
 - Đọc `crawled_contents` → trích xuất facts → phân loại nguồn → tóm tắt
 - Output: `extracted_info` (JSON structured)
 
-### `agents/reasoning_agent.py` — Agent 3 (HuggingFace)
-- Config: `AGENT3` prefix, `max_prompt_chars=12,000`
+### `agents/reasoning_agent.py` — Agent 3 (Gemini Focus)
+- Config: `AGENT3` prefix, `max_prompt_chars=12,000` (sử dụng `_fix_urls` chống Hallucinations)
 - LLM suy luận → luận điểm + dẫn chứng cụ thể + URL bài báo → verdict
 - Output: `verdict` gồm: `summary`, `arguments[]`, `reasoning`, `reliable_sources[]`
 
 ### `database/mongo_cache.py` — Semantic Cache
 - Class `MongoSemanticCache` — core logic Two-Stage Cache
-- `_extract_entities()`: Regex (số, ngày) + underthesea NER (PER, LOC, ORG)
-- `check_cache()`: Stage 1 Vector Search → Stage 2 NER compare → HIT/MISS
+- `_extract_entities()`: Dò quét con số (Numeric Regex) để tránh False Positives từ địa danh
+- `check_cache()`: Stage 1 Vector Search → Stage 2 Numeric compare → HIT/MISS
 - `save_to_cache()`: Lưu query + embedding + entities + verdict vào MongoDB
 - TTL mặc định 7 ngày
 
@@ -380,10 +379,10 @@ AGENT2_MODEL=gemini-2.5-flash
 AGENT2_TEMPERATURE=0.1
 AGENT2_MAX_TOKENS=4096
 
-# ==== AGENT 3 - REASONING (HuggingFace - suy luận mạnh) ====
-AGENT3_BASE_URL=https://router.huggingface.co/v1/
-AGENT3_API_KEY=hf_your_token
-AGENT3_MODEL=Qwen/Qwen2.5-72B-Instruct
+# ==== AGENT 3 - REASONING (Google Gemini - suy luận mạnh) ====
+AGENT3_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+AGENT3_API_KEY=your_gemini_key  # Hoặc dùng GEMINI_POOL_KEYS để tự xoay vòng
+AGENT3_MODEL=gemini-2.5-flash
 AGENT3_TEMPERATURE=0.1
 AGENT3_MAX_TOKENS=2048
 ```
@@ -440,6 +439,15 @@ Trong `database/mongo_cache.py`:
 ---
 
 ## 📋 Changelog
+
+### v4.0 — NCKH Academic Release (Latest)
+- **[NEW]** **Query Normalization Layer:** Thêm Agent tiền trạm gọt dũa tin đồn, tăng cực đỉnh tỷ lệ Vector Search.
+- **[NEW]** **API Key Rotation:** Tích hợp `GEMINI_POOL_KEYS` vào `.env`, tự động xoay vòng chặn đứng Rate Limit 429.
+- **[NEW]** **Dynamic Summary Rewrite:** Tích hợp Groq tự động viết lại Tóm tắt (Cache Hit) cho thuận văn phong người dùng.
+- **[BUGFIX]** **Anti-Hallucination URLs:** Loại bỏ tận gốc vấn đề LLM tự sinh địa chỉ web bịa đặt.
+- Cấu trúc file cấu hình chuyển đổi mượt mà giữa HuggingFace truyền thống và Gemini Pool.
+
+---
 
 ### v3.0 — 2026-03-24 (Multi-LLM Architecture + Semantic Cache)
 
