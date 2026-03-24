@@ -1,0 +1,88 @@
+"""
+Cấu hình hệ thống Multi-Agent Fake News Verification.
+
+Thiết kế đơn giản: chỉ cần 3 biến để cấu hình LLM:
+  - LLM_BASE_URL: Endpoint API (đổi URL = đổi provider)
+  - LLM_API_KEY:  API key tương ứng
+  - LLM_MODEL:    Tên model
+
+Hầu hết providers đều hỗ trợ OpenAI-compatible API,
+nên chỉ cần 1 class ChatOpenAI là chạy được tất cả.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from dotenv import load_dotenv
+
+if TYPE_CHECKING:
+    from langchain_openai import ChatOpenAI  # type: ignore[import-untyped]
+
+# Load .env file
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
+
+
+# ============================================================
+# Cấu hình LLM — Gọi thông qua get_llm_for_agent
+# ============================================================
+
+def get_llm_for_agent(agent_type: str = "AGENT1") -> ChatOpenAI:
+    """
+    Khởi tạo LLM client riêng cho từng Agent, lách Rate Limit bằng cách mix AI.
+    Đọc biến môi trường theo prefix (VD: AGENT1_BASE_URL, AGENT2_API_KEY).
+    Hỗ trợ mọi Provider có chuẩn OpenAI-compatible (Groq, HuggingFace, Gemini via OpenAI SDK).
+    """
+    base_url = os.getenv(f"{agent_type}_BASE_URL", "https://api.groq.com/openai/v1")
+    api_key = os.getenv(f"{agent_type}_API_KEY", "")
+    model = os.getenv(f"{agent_type}_MODEL", "llama-3.1-8b-instant")
+    temperature = float(os.getenv(f"{agent_type}_TEMPERATURE", "0.1"))
+    max_tokens = int(os.getenv(f"{agent_type}_MAX_TOKENS", "4096"))
+
+    # Fallback back compatibility cũ nếu chưa update .env kịp
+    if not api_key:
+        api_key = os.getenv("LLM_API_KEY", "")
+
+    if not api_key:
+        raise ValueError(
+            f"{agent_type}_API_KEY chưa được cấu hình.\n"
+            f"Mở file .env và bảo đảm đã khai báo API key cho {agent_type}."
+        )
+
+    from langchain_openai import ChatOpenAI  # type: ignore[import-untyped]
+
+    return ChatOpenAI(
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        base_url=base_url,
+        api_key=api_key,
+    )
+
+_gemini_pool_keys = []
+_gemini_key_index = 0
+
+def get_next_gemini_key() -> str | None:
+    """
+    Rút API Key từ rổ GEMINI_POOL_KEYS theo cơ chế vòng lặp xoay vòng (Round-Robin).
+    Sử dụng khi gặp Rate Limit (429) để tự động đổi Key mà không cần chờ.
+    """
+    global _gemini_pool_keys, _gemini_key_index
+    
+    # Load pool key 1 lần duy nhất
+    if not _gemini_pool_keys:
+        import os
+        keys_str = os.getenv("GEMINI_POOL_KEYS", "")
+        if keys_str:
+            _gemini_pool_keys = [k.strip() for k in keys_str.split(",") if k.strip()]
+            
+    # Lấy key và xoay vòng
+    if _gemini_pool_keys:
+        key = _gemini_pool_keys[_gemini_key_index % len(_gemini_pool_keys)]
+        _gemini_key_index += 1
+        return key
+
+    return None

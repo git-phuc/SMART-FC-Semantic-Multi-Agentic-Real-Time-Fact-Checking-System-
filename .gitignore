@@ -1,0 +1,31 @@
+# Môi trường ảo (Virtual Environments)
+.venv/
+venv/
+env/
+.env
+
+# API Keys & Cấu hình nhạy cảm (TUYỆT ĐỐI KHÔNG PUSH LÊN GIT)
+.env
+.env.*
+*.pem
+*.key
+
+# File tạm thời sinh ra trong quá trình chạy (Python Caches)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# File tạm sinh ra trong lúc debug
+tmp_*.py
+debug_*.py
+scratch_*.py
+.search_cache.json
+
+# File Log
+*.log
+logs/
+
+# MacOS/Windows rác
+.DS_Store
+Thumbs.db
