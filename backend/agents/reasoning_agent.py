@@ -177,7 +177,12 @@ class ReasoningAgent(BaseAgent):
             if best_url:
                 return best_url
                 
-            # 4. TRƯỜNG HỢP XẤU NHẤT: Bắt buộc nhét URL thật đầu tiên vào để chống ảo giác
+            # Tôn trọng quyết định của AI nếu nó báo không có nguồn
+            if not claimed_url or "không có" in source_lower or "unknown" in source_lower or source_lower == "n/a":
+                return ""
+                
+            # TRƯỜNG HỢP XẤU NHẤT: Bắt buộc nhét URL thật đầu tiên vào để chống ảo giác
+            # Chỉ áp dụng khi AI cố tình bịa 1 URL nào đó mà không khớp
             return list(real_urls.keys())[0] if real_urls else original_claimed_url
 
         # Fix URLs trong arguments
