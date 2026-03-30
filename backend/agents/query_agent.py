@@ -160,7 +160,7 @@ class QueryAgent(BaseAgent):
             filtered_results,
             key=lambda x: x.get("score", 0),
             reverse=True,
-        )[:5]   # Top 5 — sau khi lọc YouTube/FB, thực tế khoảng 3-4 cái hữu ích
+        )[:5]   # Top 5 — Sau khi lọc YouTube/FB, thực tế khoảng 3-4 cái hữu ích.
 
         crawled_contents = []
         with ThreadPoolExecutor(max_workers=5) as executor:
