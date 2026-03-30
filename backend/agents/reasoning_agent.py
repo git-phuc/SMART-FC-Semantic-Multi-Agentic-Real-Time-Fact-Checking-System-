@@ -133,51 +133,52 @@ class ReasoningAgent(BaseAgent):
     def _fix_urls(self, verdict: dict, crawled_contents: list[dict]) -> dict:
         """
         Thay thế URLs bịa bằng URLs thật từ crawled_contents.
-        Dùng text matching giữa source_name (LLM output) và title (crawled).
+        Tuyệt đối không giữ lại URL nếu nó không tồn tại trong danh sách crawl.
         """
-        # Xây map: tên nguồn (lowercase) → URL thật
-        real_urls = {}
-        for c in crawled_contents:
-            url = c.get("url", "")
-            title = c.get("title", "").lower()
-            if url:
-                real_urls[url] = title
-                # Trích domain làm key phụ
-                from urllib.parse import urlparse
-                domain = urlparse(url).netloc.replace("www.", "")
-                if domain:
-                    real_urls.setdefault(f"domain:{domain}", url)
+        if not crawled_contents:
+            return verdict
+
+        # Xây map: URL thật -> Title
+        real_urls = {c.get("url", ""): c.get("title", "").lower() for c in crawled_contents if c.get("url")}
+        
+        # Xây map: Domain -> URL thật
+        from urllib.parse import urlparse
+        domains = {}
+        for url in real_urls:
+            domain = urlparse(url).netloc.replace("www.", "")
+            if domain:
+                domains[domain] = url
 
         def _find_real_url(claimed_url: str, source_name: str) -> str:
-            """Tìm URL thật gần nhất với URL/source_name mà LLM đưa ra."""
-            # Nếu URL đã có trong crawled → giữ nguyên
+            """Tìm URL thật. Nếu không thấy, auto trả về URL đầu tiên làm fallback an toàn."""
+            original_claimed_url = claimed_url
+
+            # 1. Match chính xác URL
             if claimed_url in real_urls:
                 return claimed_url
 
-            # Tìm bằng domain match
-            if claimed_url:
-                from urllib.parse import urlparse
-                claimed_domain = urlparse(claimed_url).netloc.replace("www.", "")
-                domain_key = f"domain:{claimed_domain}"
-                if domain_key in real_urls:
-                    return real_urls[domain_key]
+            # 2. Match theo domain
+            claimed_domain = urlparse(claimed_url).netloc.replace("www.", "")
+            if claimed_domain and claimed_domain in domains:
+                return domains[claimed_domain]
 
-            # Tìm bằng tên nguồn match với title bài báo
+            # 3. Match theo tên báo (source_name) vs Title
             source_lower = source_name.lower() if source_name else ""
             best_url = ""
             best_score = 0
             for url, title in real_urls.items():
-                if url.startswith("domain:"):
-                    continue
-                # Đếm từ chung giữa source_name và title
                 source_words = set(source_lower.split())
                 title_words = set(title.split())
                 common = len(source_words & title_words)
                 if common > best_score:
                     best_score = common
                     best_url = url
-
-            return best_url if best_score > 0 else ""
+            
+            if best_url:
+                return best_url
+                
+            # 4. TRƯỜNG HỢP XẤU NHẤT: Bắt buộc nhét URL thật đầu tiên vào để chống ảo giác
+            return list(real_urls.keys())[0] if real_urls else original_claimed_url
 
         # Fix URLs trong arguments
         for arg in verdict.get("arguments", []):
@@ -190,7 +191,7 @@ class ReasoningAgent(BaseAgent):
                         self.logger, self.name, "Fixed URL",
                         f"{claimed[:50]}... → {fixed[:50]}..."
                     )
-                arg["source_url"] = fixed or claimed
+                arg["source_url"] = fixed
 
         # Fix URLs trong reliable_sources
         for src in verdict.get("reliable_sources", []):
@@ -203,6 +204,6 @@ class ReasoningAgent(BaseAgent):
                         self.logger, self.name, "Fixed source URL",
                         f"{claimed[:50]}... → {fixed[:50]}..."
                     )
-                src["url"] = fixed or claimed
+                src["url"] = fixed
 
         return verdict
