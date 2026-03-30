@@ -120,7 +120,7 @@ def run_verification_with_cache(claim: str) -> dict:
                 # --- Quick Rewrite (Groq): Sửa ngữ cảnh của Summary cho khớp với câu hỏi của User ---
                 try:
                     from config.settings import get_llm_for_agent
-                    from langchain_core.messages import HumanMessage
+                    from langchain_core.messages import HumanMessage  # type: ignore[import-untyped]
                     fast_llm = get_llm_for_agent("AGENT1")
                     original_summary = verdict_data.get("summary", "")
                     

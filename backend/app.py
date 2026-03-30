@@ -91,8 +91,7 @@ def render_verdict(verdict_data: dict, time_taken: float = 0.0, from_cache: bool
     color_map = {
         "THẬT": "green",
         "GIẢ": "red",
-        "CHƯA XÁC ĐỊNH": "orange",
-        "MỘT PHẦN ĐÚNG": "orange"
+        "CHƯA XÁC ĐỊNH": "orange"
     }
     color = color_map.get(verdict_text, "gray")
 

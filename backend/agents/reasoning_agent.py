@@ -15,7 +15,7 @@ class ReasoningAgent(BaseAgent):
     Agent cuối cùng trong pipeline.
     - Nhận extracted info từ Agent 2
     - Cross-reference facts, phân tích logic
-    - Đưa ra verdict: THẬT / GIẢ / CHƯA XÁC ĐỊNH / MỘT PHẦN ĐÚNG
+    - Đưa ra verdict: THẬT / GIẢ / CHƯA XÁC ĐỊNH
     - Kèm confidence score và giải thích chi tiết
     """
 

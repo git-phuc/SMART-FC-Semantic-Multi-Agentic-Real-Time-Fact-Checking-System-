@@ -83,8 +83,11 @@ class MongoSemanticCache:
             raise
 
         # --- Embedding Model ---
+        # QUAN TRỌNG: Revert lại bản vietnamese-sbert theo yêu cầu của anh để khớp với DB cũ
+        import gc
         logger.info("[Cache] Loading embedding model: keepitreal/vietnamese-sbert")
         self.embedder: SentenceTransformer = SentenceTransformer("keepitreal/vietnamese-sbert")
+        gc.collect()  # Buộc Python dọn dẹp RAM dư thừa sau khi load model nặng
         logger.info("[Cache] Embedding model loaded successfully")
 
         # --- LLM cho Query Normalization (dùng Groq, siêu nhanh ~1s) ---

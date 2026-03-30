@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from dotenv import load_dotenv
 
@@ -65,7 +65,27 @@ def get_llm_for_agent(agent_type: str = "AGENT1") -> ChatOpenAI:
 _gemini_pool_keys = []
 _gemini_key_index = 0
 
-def get_next_gemini_key() -> str | None:
+_groq_pool_keys = []
+_groq_key_index = 0
+
+def get_next_groq_key() -> Optional[str]:
+    """Rút API Key Groq theo cơ chế xoay vòng."""
+    global _groq_pool_keys, _groq_key_index
+    
+    if not _groq_pool_keys:
+        import os
+        keys_str = os.getenv("GROQ_POOL_KEYS", "")
+        if keys_str:
+            _groq_pool_keys = [k.strip() for k in keys_str.split(",") if k.strip()]
+            
+    if _groq_pool_keys:
+        key = _groq_pool_keys[_groq_key_index % len(_groq_pool_keys)]
+        _groq_key_index += 1
+        return key
+
+    return None
+
+def get_next_gemini_key() -> Optional[str]:
     """
     Rút API Key từ rổ GEMINI_POOL_KEYS theo cơ chế vòng lặp xoay vòng (Round-Robin).
     Sử dụng khi gặp Rate Limit (429) để tự động đổi Key mà không cần chờ.

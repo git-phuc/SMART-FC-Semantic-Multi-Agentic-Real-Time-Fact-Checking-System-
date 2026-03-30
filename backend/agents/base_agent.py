@@ -83,12 +83,13 @@ class BaseAgent(ABC):
         # Retry with backoff & API Key Rotation
         import time as _time
         import os
-        from config.settings import get_next_gemini_key
+        from config.settings import get_next_gemini_key, get_next_groq_key
         
         # Nếu có chùm key dự phòng, cho phép retry đâm thủng rate limit nhiều lần hơn
-        pool_str = os.getenv("GEMINI_POOL_KEYS", "")
-        pool_size = len([k for k in pool_str.split(",") if k.strip()]) if pool_str else 0
-        max_retries = max(3, pool_size + 2)
+        gemini_pool = os.getenv("GEMINI_POOL_KEYS", "")
+        groq_pool = os.getenv("GROQ_POOL_KEYS", "")
+        pool_size = len([k for k in gemini_pool.split(",") if k.strip()]) + len([k for k in groq_pool.split(",") if k.strip()])
+        max_retries = max(4, pool_size + 2)
 
         for attempt in range(max_retries):
             try:
@@ -101,26 +102,35 @@ class BaseAgent(ABC):
                 if ("rate_limit" in error_str or "413" in error_str or "429" in error_str or "exhausted" in error_str) and attempt < max_retries - 1:
                     
                     # Cơ chế 1: Thử xoay vòng API Key thay vì ngủ chờ
-                    is_gemini = "gemini" in str(getattr(self.llm, "model_name", "")).lower() or "gemini" in str(getattr(self.llm, "model", "")).lower()
+                    model_name_str = str(getattr(self.llm, "model_name", getattr(self.llm, "model", ""))).lower()
                     
-                    if is_gemini:
+                    new_key = None
+                    provider_name = ""
+                    
+                    if "gemini" in model_name_str:
                         new_key = get_next_gemini_key()
-                        if new_key:
-                            self.logger.warning(
-                                f"[{self.name}] Báo động Rate Limit (429)! Đang kích hoạt xoay vòng sang dự phòng Gemini API Key mới... (Lần thử {attempt + 1}/{max_retries})"
-                            )
-                            from langchain_openai import ChatOpenAI
-                            self.llm = ChatOpenAI(
-                                model=getattr(self.llm, "model_name", "gemini-2.5-flash"),
-                                temperature=getattr(self.llm, "temperature", 0.1),
-                                max_tokens=getattr(self.llm, "max_tokens", 4096),
-                                base_url=getattr(self.llm, "openai_api_base", getattr(self.llm, "base_url", "https://generativelanguage.googleapis.com/v1beta/openai/")),
-                                api_key=new_key
-                            )
-                            _time.sleep(1)  # Buffer nhẹ 1 giây
-                            continue  # Khởi động lại vòng lặp invoke không cần chờ
+                        provider_name = "Gemini"
+                    elif "llama" in model_name_str or "mixtral" in model_name_str or "deepseek" in model_name_str:
+                        # Gọi mạng Groq
+                        new_key = get_next_groq_key()
+                        provider_name = "Groq"
                     
-                    # Cơ chế 2: Hàng nội địa truyền thống nếu không phải Gemini hoặc hết Key xoay
+                    if new_key:
+                        self.logger.warning(
+                            f"[{self.name}] Báo động Rate Limit (429)! Đang kích hoạt xoay vòng sang dự phòng {provider_name} API Key mới... (Lần thử {attempt + 1}/{max_retries})"
+                        )
+                        from langchain_openai import ChatOpenAI
+                        self.llm = ChatOpenAI(
+                            model=getattr(self.llm, "model_name", getattr(self.llm, "model", "")),
+                            temperature=getattr(self.llm, "temperature", 0.1),
+                            max_tokens=getattr(self.llm, "max_tokens", 4096),
+                            base_url=getattr(self.llm, "openai_api_base", getattr(self.llm, "base_url", None)),
+                            api_key=new_key
+                        )
+                        _time.sleep(1)  # Buffer nhẹ 1 giây
+                        continue  # Khởi động lại vòng lặp invoke không cần chờ
+                    
+                    # Cơ chế 2: Nếu không có Key xoay dự phòng
                     wait = 30 * (attempt + 1)  # 30s, 60s
                     self.logger.warning(
                         f"[{self.name}] Rate limit hit, bắt buộc ngủ đông chờ {wait}s trước khi gọi lại ({attempt + 1}/{max_retries})..."
