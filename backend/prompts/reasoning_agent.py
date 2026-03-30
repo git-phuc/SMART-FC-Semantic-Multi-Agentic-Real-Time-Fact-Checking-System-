@@ -76,7 +76,7 @@ USER_PROMPT_TEMPLATE = """Kiểm chứng thông tin sau và đưa ra phán đị
 ## QUY TRÌNH BẮT BUỘC:
 1. Đọc kỹ tiêu đề và nội dung từng nguồn.
 2. Xác định: Nguồn này ĐỒNG THUẬN, MÂU THUẪN, hay KHÔNG ĐỦ CHI TIẾT so với claim?
-3. Viết ít nhất 1–3 luận điểm cụ thể (kèm trích dẫn + link nguồn).
+3. Tổng hợp thành các luận điểm cụ thể (kèm trích dẫn + link nguồn).
 4. Tính toán điểm `confidence_score` dựa trên cấp độ uy tín của nguồn (Cấp 1, 2, 3, 4).
 5. Kết luận verdict dựa trên tổng hợp bằng chứng.
 

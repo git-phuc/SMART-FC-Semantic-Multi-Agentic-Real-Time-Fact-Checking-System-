@@ -147,17 +147,22 @@ def render_verdict(verdict_data: dict, time_taken: float = 0.0, from_cache: bool
     
     st.info(verdict_data.get("summary", "Không có tóm tắt."))
 
-    arguments = verdict_data.get("arguments", [])
-    if arguments:
+    raw_arguments = verdict_data.get("arguments", [])
+    # Lọc bỏ các luận điểm không có link (ví dụ AI tự nói "không tìm thấy")
+    valid_arguments = [arg for arg in raw_arguments if arg.get("source_url", "").strip()]
+    
+    # Giới hạn hiển thị tối đa 3 luận điểm (1-3)
+    display_arguments = valid_arguments[:3]
+
+    if display_arguments:
         st.divider()
         st.markdown("#### 📝 Luận điểm & Bằng chứng")
-        for i, arg in enumerate(arguments, 1):
+        for i, arg in enumerate(display_arguments, 1):
             with st.expander(f"{i}. {arg.get('title', 'Luận điểm')}", expanded=True):
                 st.write(arg.get("content", ""))
                 if arg.get("evidence"):
                     st.caption(f"Trích dẫn: {arg.get('evidence')}")
-                if arg.get("source_url"):
-                    st.markdown(f"Đọc thêm: [{arg.get('source_name', 'Nguồn')}]({arg.get('source_url')})")
+                st.markdown(f"Đọc thêm: [{arg.get('source_name', 'Nguồn')}]({arg.get('source_url')})")
 
     if verdict_data.get("recommendation"):
         st.success(verdict_data.get("recommendation"))

@@ -89,7 +89,7 @@ class BaseAgent(ABC):
         gemini_pool = os.getenv("GEMINI_POOL_KEYS", "")
         groq_pool = os.getenv("GROQ_POOL_KEYS", "")
         pool_size = len([k for k in gemini_pool.split(",") if k.strip()]) + len([k for k in groq_pool.split(",") if k.strip()])
-        max_retries = max(4, pool_size + 2)
+        max_retries = max(20, pool_size + 15)
 
         for attempt in range(max_retries):
             try:
@@ -115,7 +115,7 @@ class BaseAgent(ABC):
                         new_key = get_next_groq_key()
                         provider_name = "Groq"
                     
-                    if new_key:
+                    if new_key and attempt < max(1, pool_size):
                         self.logger.warning(
                             f"[{self.name}] Báo động Rate Limit (429)! Đang kích hoạt xoay vòng sang dự phòng {provider_name} API Key mới... (Lần thử {attempt + 1}/{max_retries})"
                         )
@@ -127,13 +127,18 @@ class BaseAgent(ABC):
                             base_url=getattr(self.llm, "openai_api_base", getattr(self.llm, "base_url", None)),
                             api_key=new_key
                         )
-                        _time.sleep(1)  # Buffer nhẹ 1 giây
+                        _time.sleep(2)  # Buffer nhẹ
                         continue  # Khởi động lại vòng lặp invoke không cần chờ
                     
-                    # Cơ chế 2: Nếu không có Key xoay dự phòng
-                    wait = 30 * (attempt + 1)  # 30s, 60s
+                    # Cơ chế 2: Nếu vòng lặp cạn Key xoay dự phòng hoặc tất cả Key đều bị 429
+                    import re
+                    match = re.search(r'retry in (\d+\.?\d*)s', error_str)
+                    wait = int(float(match.group(1))) + 5 if match else 30 * (attempt + 1)
+                    if wait < 65:
+                        wait = 65  # Ép ngủ đông tối thiểu 65s để đợi Google reset lại bucket (1 phút)
+                    
                     self.logger.warning(
-                        f"[{self.name}] Rate limit hit, bắt buộc ngủ đông chờ {wait}s trước khi gọi lại ({attempt + 1}/{max_retries})..."
+                        f"[{self.name}] Rate limit hit & Exhausted Key Pool, bắt buộc ngủ đông chờ {wait}s trước khi gọi lại ({attempt + 1}/{max_retries})..."
                     )
                     _time.sleep(wait)
                 else:
