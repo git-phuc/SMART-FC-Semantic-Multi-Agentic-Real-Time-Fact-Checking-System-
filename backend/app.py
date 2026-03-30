@@ -24,13 +24,20 @@ _preload_cache()  # Chạy 1 lần khi app khởi động, cache lại cho các 
 # === Custom CSS ===
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
     .inference-badge {
         display: inline-block;
-        padding: 4px 12px;
-        border-radius: 16px;
-        font-size: 0.8em;
-        font-weight: 600;
-        margin-bottom: 8px;
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-size: 0.85em;
+        font-weight: 700;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        border: 1px solid rgba(255,255,255,0.2);
     }
     .badge-cache {
         background: linear-gradient(135deg, #00b894, #00cec9);
@@ -40,12 +47,44 @@ st.markdown("""
         background: linear-gradient(135deg, #6c5ce7, #a29bfe);
         color: white;
     }
+    .verdict-box {
+        padding: 20px;
+        border-radius: 12px;
+        border-left: 8px solid;
+        margin-bottom: 20px;
+        background-color: rgba(128, 128, 128, 0.05);
+    }
+    .verdict-THẬT { border-color: #00b894; }
+    .verdict-GIẢ { border-color: #d63031; }
+    .verdict-CHƯA_XÁC_ĐỊNH { border-color: #fdcb6e; }
+    .verdict-title {
+        font-size: 1.6rem;
+        font-weight: 800;
+        margin-bottom: 5px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
+# === Giao diện Sidebar ===
+with st.sidebar:
+    st.markdown("### 🧬 Về SMART-FC")
+    st.caption("Semantic Multi-Agentic Real-Time Fact-Checking. Khung hệ thống điểm chuẩn kiểm chứng thông tin tự động tiếng Việt.")
+    
+    st.divider()
+    st.markdown("### 🧠 Kiến trúc Mix-LLM")
+    st.info("Trình truy vấn: **LLaMA-3.1-8B**")
+    st.info("Trình trích xuất: **Gemini-2.5-Flash**")
+    st.warning("Trình suy luận: **LLaMA-3.3-70B**")
+    
+    st.divider()
+    st.markdown("### ⚡ Công nghệ Tăng tốc")
+    st.success("✔ Two-Stage Semantic Cache")
+    st.success("✔ MongoDB Vector Search")
+    st.success("✔ Round-Robin API Rotation")
+
 # === Giao diện chính ===
-st.title("🤖 Multi-Agent Vietnamese Fake News Verification")
-st.markdown("Hệ thống kiểm chứng tin tức tự động bằng AI. Nhập tin đồn bạn muốn kiểm chứng vào ô chat bên dưới.")
+st.title("🤖 SMART-FC: Hệ thống Kiểm chứng Tin giả")
+st.markdown("Hệ thống kiểm chứng tự động Đa tác tử. Hãy nhập văn bản hoặc tin đồn cần xác minh vào khung chat bên dưới.")
 
 # Khởi tạo lịch sử chat
 if "messages" not in st.session_state:
@@ -89,13 +128,22 @@ def render_verdict(verdict_data: dict, time_taken: float = 0.0, from_cache: bool
     confidence = verdict_data.get("confidence_score", 0.0)
 
     color_map = {
-        "THẬT": "green",
-        "GIẢ": "red",
-        "CHƯA XÁC ĐỊNH": "orange"
+        "THẬT": "#00b894",
+        "GIẢ": "#d63031",
+        "CHƯA XÁC ĐỊNH": "#fdcb6e"
     }
     color = color_map.get(verdict_text, "gray")
 
-    st.markdown(f"### Phán định: :{color}[**{verdict_text}**] (Độ tin cậy: {confidence:.0%})")
+    v_class = "CHƯA_XÁC_ĐỊNH"
+    if verdict_text == "THẬT": v_class = "THẬT"
+    elif verdict_text == "GIẢ": v_class = "GIẢ"
+
+    st.markdown(f'''
+    <div class="verdict-box verdict-{v_class}">
+        <div class="verdict-title">Phán định: <span style="color: {color};">{verdict_text}</span></div>
+        <div style="font-size: 1.1em; opacity: 0.8;">Độ tin cậy: <strong>{confidence:.1%}</strong></div>
+    </div>
+    ''', unsafe_allow_html=True)
     
     st.info(verdict_data.get("summary", "Không có tóm tắt."))
 
@@ -110,13 +158,6 @@ def render_verdict(verdict_data: dict, time_taken: float = 0.0, from_cache: bool
                     st.caption(f"Trích dẫn: {arg.get('evidence')}")
                 if arg.get("source_url"):
                     st.markdown(f"Đọc thêm: [{arg.get('source_name', 'Nguồn')}]({arg.get('source_url')})")
-
-    sources = verdict_data.get("reliable_sources", [])
-    if sources:
-        st.divider()
-        st.markdown("#### 🔗 Nguồn tham khảo")
-        for src in sources:
-            st.markdown(f"- **{src.get('name', 'N/A')}** *(Độ tin cậy: {src.get('credibility_level', '—')})* - [Link bài viết]({src.get('url', '#')})")
 
     if verdict_data.get("recommendation"):
         st.success(verdict_data.get("recommendation"))
