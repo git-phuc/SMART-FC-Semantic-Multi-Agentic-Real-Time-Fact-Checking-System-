@@ -126,21 +126,6 @@ def display_verdict(state: dict) -> None:
         )
         console.print(table)
 
-    # === Nguồn tin cậy ===
-    sources = verdict.get("reliable_sources", [])
-    if sources:
-        source_table = Table(title="🔗 Nguồn tham khảo", box=box.ROUNDED)
-        source_table.add_column("Nguồn", style="bold", min_width=15)
-        source_table.add_column("Độ tin cậy", style="green", width=12)
-        source_table.add_column("Link bài báo", style="blue underline")
-
-        for src in sources:
-            source_table.add_row(
-                src.get("name", "N/A"),
-                src.get("credibility_level", "—"),
-                src.get("url", "N/A"),
-            )
-        console.print(source_table)
 
     # === Khuyến nghị ===
     recommendation = verdict.get("recommendation", "")

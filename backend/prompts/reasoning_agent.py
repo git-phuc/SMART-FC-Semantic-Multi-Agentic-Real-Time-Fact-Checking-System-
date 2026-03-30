@@ -61,13 +61,6 @@ Giá trị của "confidence_score" phải là một số thập phân (float) p
         "contradicting_evidence": ["Trích dẫn ngắn gọn nếu có"],
         "logical_analysis": "Giải thích logic: Vì sao dữ liệu này DẪN ĐẾN việc chọn Rule và Verdict hiện tại."
     },
-    "reliable_sources": [
-        {
-            "name": "Tên báo (ví dụ: VTV News)",
-            "url": "URL của bài báo",
-            "credibility_level": "Cấp 1 | Cấp 2 | Cấp 3"
-        }
-    ],
     "recommendation": "Khuyên người dùng nên làm gì tiếp theo (ví dụ: cẩn trọng, đợi thông báo chính thức...)"
 }
 """

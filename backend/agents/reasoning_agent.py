@@ -115,7 +115,6 @@ class ReasoningAgent(BaseAgent):
                 "contradicting_evidence": [],
                 "logical_analysis": "Không có phân tích",
             },
-            "reliable_sources": [],
             "recommendation": "Hãy tìm hiểu thêm từ các nguồn tin chính thống.",
         }
 
@@ -198,18 +197,5 @@ class ReasoningAgent(BaseAgent):
                         f"{claimed[:50]}... → {fixed[:50]}..."
                     )
                 arg["source_url"] = fixed
-
-        # Fix URLs trong reliable_sources
-        for src in verdict.get("reliable_sources", []):
-            if isinstance(src, dict):
-                claimed = src.get("url", "")
-                source = src.get("name", "")
-                fixed = _find_real_url(claimed, source)
-                if fixed and fixed != claimed:
-                    log_agent_step(
-                        self.logger, self.name, "Fixed source URL",
-                        f"{claimed[:50]}... → {fixed[:50]}..."
-                    )
-                src["url"] = fixed
 
         return verdict
