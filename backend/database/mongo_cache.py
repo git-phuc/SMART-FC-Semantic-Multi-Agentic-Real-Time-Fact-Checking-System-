@@ -31,7 +31,7 @@ logger = get_logger("Cache.Mongo")
 # ============================================================
 # Constants
 # ============================================================
-SIMILARITY_THRESHOLD = 0.80
+SIMILARITY_THRESHOLD = 0.88
 CACHE_TTL_DAYS = 7
 VECTOR_INDEX_NAME = "vector_index"
 DB_NAME = "FakeNewsDB"
@@ -301,18 +301,30 @@ class MongoSemanticCache:
                     f"cached_loc={cached_entities.get('loc', set[str]())}"
                 )
 
-                # So sánh: chỉ check nums (NER loc quá nhiều false positive với tiếng Việt)
-                # Cosine similarity ở Stage 1 đã xử lý ngữ nghĩa rồi
                 nums_match = (
                     not new_entities["nums"]  # query mới không có số → skip
                     or new_entities["nums"].issubset(cached_entities.get("nums", set()))
                 )
 
-                if nums_match:
+                # Check chống false positive tên người (vd: Tô Lâm vs Volodin)
+                # Nếu query mới có tên người, phải có ít nhất 1 tên xuất hiện trong cache
+                person_match = True
+                if new_entities["per"]:
+                    cached_per = cached_entities.get("per", set())
+                    person_match = False
+                    for np in new_entities["per"]:
+                        for cp in cached_per:
+                            if np in cp or cp in np:
+                                person_match = True
+                                break
+                        if person_match:
+                            break
+
+                if nums_match and person_match:
                     # Cache HIT!
                     log_agent_step(
                         logger, "Cache", "Cache HIT ✅",
-                        f"score={score:.4f} | Entities khớp 100%"
+                        f"score={score:.4f} | Entities khớp an toàn"
                     )
 
                     # Tăng hit_count

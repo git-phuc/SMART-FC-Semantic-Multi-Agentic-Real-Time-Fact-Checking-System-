@@ -20,7 +20,8 @@ class ReasoningAgent(BaseAgent):
     """
 
     def __init__(self):
-        super().__init__("ReasoningAgent", "AGENT3")
+        # LLaMA-3.3-70B có context lớn. Nâng giới hạn text để không làm cụt Extract data của Gemini.
+        super().__init__("ReasoningAgent", "AGENT3", max_prompt_chars=60000)
 
     def run(self, state: dict) -> dict:
         """
