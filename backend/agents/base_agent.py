@@ -121,7 +121,7 @@ class BaseAgent(ABC):
             # Nếu đây là cycle > 0 (tức là đã thất bại ở vòng trước), ngủ 65s
             if cycle > 0:
                 self.logger.warning(
-                    f"[{self.name}] 💤 Ngủ đông 65s — chờ Google reset rate-limit bucket "
+                    f"[{self.name}] 💤 Ngủ đông 65s — chờ {provider_name} reset rate-limit bucket "
                     f"(Vòng ngủ {cycle}/{MAX_SLEEP_CYCLES})"
                 )
                 _time.sleep(65)
@@ -160,9 +160,11 @@ class BaseAgent(ABC):
                                        ["rate_limit", "429", "413", "exhausted", "resource_exhausted"])
 
                     if is_rate_limit:
+                        # Lấy snippet lỗi gốc để debug
+                        err_snippet = str(e)[:200]
                         self.logger.warning(
                             f"[{self.name}] ⚠️ Key #{key_idx + 1}/{pool_size} bị 429 "
-                            f"(cycle {cycle}) — thử key tiếp..."
+                            f"(cycle {cycle}) — thử key tiếp... | Lỗi: {err_snippet}"
                         )
                         _time.sleep(1)  # Delay nhẹ giữa các key
                         continue
