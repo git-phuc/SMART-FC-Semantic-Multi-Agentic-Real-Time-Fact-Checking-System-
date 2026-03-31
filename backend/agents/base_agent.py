@@ -103,6 +103,13 @@ class BaseAgent(ABC):
         pool_keys = [k.strip() for k in pool_keys_str.split(",") if k.strip()]
         pool_size = len(pool_keys) if pool_keys else 1
 
+        # DEBUG: In ra để biết chính xác đang dùng model/provider nào
+        base_url_str = str(getattr(self.llm, "openai_api_base", getattr(self.llm, "base_url", "N/A")))
+        self.logger.info(
+            f"[{self.name}] 🔧 DEBUG: model={model_name_str} | provider={provider_name} | "
+            f"base_url={base_url_str} | pool_size={pool_size}"
+        )
+
         # === CHIẾN LƯỢC XOAY VÒNG ===
         # Tối đa 3 "sleep cycles". Mỗi cycle:
         #   1) Thử tất cả key trong pool (mỗi key thử 1 lần)
