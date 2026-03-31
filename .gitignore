@@ -29,3 +29,5 @@ logs/
 # MacOS/Windows rác
 .DS_Store
 Thumbs.db
+
+Evaluation/
