@@ -55,13 +55,11 @@ class BaseAgent(ABC):
     def call_llm(self, system_prompt: str, user_prompt: str) -> str:
         """
         Gọi LLM với system prompt và user prompt.
-
-        Args:
-            system_prompt: System message hướng dẫn vai trò LLM
-            user_prompt: User message chứa dữ liệu cần xử lý
-
-        Returns:
-            LLM response text
+        Có cơ chế xoay vòng API Key thông minh:
+          - Vòng 1: Thử lần lượt TẤT CẢ key trong pool (không ngủ)
+          - Nếu tất cả key đều bị 429 → Ngủ đúng 65s (chờ Google reset bucket)
+          - Vòng 2: Thử lại TẤT CẢ key 1 lần nữa (key đã được reset)
+          - Tối đa 3 vòng ngủ (3 × 65s = ~3 phút) trước khi bỏ cuộc
         """
         # Truncate prompt nếu quá dài (tránh Groq TPM limit)
         if len(user_prompt) > self.max_prompt_chars:
@@ -79,70 +77,100 @@ class BaseAgent(ABC):
             HumanMessage(content=user_prompt),
         ]
 
-        # Retry with backoff khi bị rate limit
-        # Retry with backoff & API Key Rotation
         import time as _time
         import os
         from config.settings import get_next_gemini_key, get_next_groq_key
-        
-        # Nếu có chùm key dự phòng, cho phép retry đâm thủng rate limit nhiều lần hơn
-        gemini_pool = os.getenv("GEMINI_POOL_KEYS", "")
-        groq_pool = os.getenv("GROQ_POOL_KEYS", "")
-        pool_size = len([k for k in gemini_pool.split(",") if k.strip()]) + len([k for k in groq_pool.split(",") if k.strip()])
-        max_retries = max(20, pool_size + 15)
 
-        for attempt in range(max_retries):
-            try:
-                response = self.llm.invoke(messages)
-                result = str(response.content)
-                log_agent_io(self.logger, self.name, user_prompt, result)
-                return result
-            except Exception as e:
-                error_str = str(e).lower()
-                if ("rate_limit" in error_str or "413" in error_str or "429" in error_str or "exhausted" in error_str) and attempt < max_retries - 1:
-                    
-                    # Cơ chế 1: Thử xoay vòng API Key thay vì ngủ chờ
-                    model_name_str = str(getattr(self.llm, "model_name", getattr(self.llm, "model", ""))).lower()
-                    
-                    new_key = None
-                    provider_name = ""
-                    
-                    if "gemini" in model_name_str:
-                        new_key = get_next_gemini_key()
-                        provider_name = "Gemini"
-                    elif "llama" in model_name_str or "mixtral" in model_name_str or "deepseek" in model_name_str:
-                        # Gọi mạng Groq
-                        new_key = get_next_groq_key()
-                        provider_name = "Groq"
-                    
-                    if new_key and attempt < max(1, pool_size):
-                        self.logger.warning(
-                            f"[{self.name}] Báo động Rate Limit (429)! Đang kích hoạt xoay vòng sang dự phòng {provider_name} API Key mới... (Lần thử {attempt + 1}/{max_retries})"
-                        )
-                        from langchain_openai import ChatOpenAI
-                        self.llm = ChatOpenAI(
-                            model=getattr(self.llm, "model_name", getattr(self.llm, "model", "")),
-                            temperature=getattr(self.llm, "temperature", 0.1),
-                            max_tokens=getattr(self.llm, "max_tokens", 4096),
-                            base_url=getattr(self.llm, "openai_api_base", getattr(self.llm, "base_url", None)),
-                            api_key=new_key
-                        )
-                        _time.sleep(2)  # Buffer nhẹ
-                        continue  # Khởi động lại vòng lặp invoke không cần chờ
-                    
-                    # Cơ chế 2: Nếu vòng lặp cạn Key xoay dự phòng hoặc tất cả Key đều bị 429
-                    import re
-                    match = re.search(r'retry in (\d+\.?\d*)s', error_str)
-                    wait = int(float(match.group(1))) + 5 if match else 30 * (attempt + 1)
-                    if wait < 65:
-                        wait = 65  # Ép ngủ đông tối thiểu 65s để đợi Google reset lại bucket (1 phút)
-                    
-                    self.logger.warning(
-                        f"[{self.name}] Rate limit hit & Exhausted Key Pool, bắt buộc ngủ đông chờ {wait}s trước khi gọi lại ({attempt + 1}/{max_retries})..."
+        # Xác định provider hiện tại
+        model_name_str = str(getattr(self.llm, "model_name", getattr(self.llm, "model", ""))).lower()
+        is_gemini = "gemini" in model_name_str
+        is_groq = "llama" in model_name_str or "mixtral" in model_name_str or "deepseek" in model_name_str
+
+        # Load pool keys
+        if is_gemini:
+            pool_keys_str = os.getenv("GEMINI_POOL_KEYS", "")
+            get_next_key = get_next_gemini_key
+            provider_name = "Gemini"
+        elif is_groq:
+            pool_keys_str = os.getenv("GROQ_POOL_KEYS", "")
+            get_next_key = get_next_groq_key
+            provider_name = "Groq"
+        else:
+            pool_keys_str = ""
+            get_next_key = lambda: None
+            provider_name = "Unknown"
+
+        pool_keys = [k.strip() for k in pool_keys_str.split(",") if k.strip()]
+        pool_size = len(pool_keys) if pool_keys else 1
+
+        # === CHIẾN LƯỢC XOAY VÒNG ===
+        # Tối đa 3 "sleep cycles". Mỗi cycle:
+        #   1) Thử tất cả key trong pool (mỗi key thử 1 lần)
+        #   2) Nếu hết key mà vẫn 429 → ngủ 65s rồi thử vòng mới
+        MAX_SLEEP_CYCLES = 3
+        last_error = None
+
+        for cycle in range(MAX_SLEEP_CYCLES + 1):
+            # Nếu đây là cycle > 0 (tức là đã thất bại ở vòng trước), ngủ 65s
+            if cycle > 0:
+                self.logger.warning(
+                    f"[{self.name}] 💤 Ngủ đông 65s — chờ Google reset rate-limit bucket "
+                    f"(Vòng ngủ {cycle}/{MAX_SLEEP_CYCLES})"
+                )
+                _time.sleep(65)
+
+            # Thử tất cả key trong pool
+            for key_idx in range(pool_size):
+                # Lấy key tiếp theo từ pool (round-robin)
+                new_key = get_next_key()
+                if new_key:
+                    from langchain_openai import ChatOpenAI  # type: ignore[import-untyped]
+                    self.llm = ChatOpenAI(
+                        model=getattr(self.llm, "model_name", getattr(self.llm, "model", "")),
+                        temperature=getattr(self.llm, "temperature", 0.1),
+                        max_tokens=getattr(self.llm, "max_tokens", 4096),
+                        base_url=getattr(self.llm, "openai_api_base", getattr(self.llm, "base_url", None)),
+                        api_key=new_key,
                     )
-                    _time.sleep(wait)
-                else:
-                    raise
+
+                try:
+                    response = self.llm.invoke(messages)
+                    result = str(response.content)
+
+                    if cycle > 0 or key_idx > 0:
+                        self.logger.info(
+                            f"[{self.name}] ✅ Thành công với {provider_name} key #{key_idx + 1} "
+                            f"(sau {cycle} vòng ngủ)"
+                        )
+
+                    log_agent_io(self.logger, self.name, user_prompt, result)
+                    return result
+
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e).lower()
+                    is_rate_limit = any(kw in error_str for kw in
+                                       ["rate_limit", "429", "413", "exhausted", "resource_exhausted"])
+
+                    if is_rate_limit:
+                        self.logger.warning(
+                            f"[{self.name}] ⚠️ Key #{key_idx + 1}/{pool_size} bị 429 "
+                            f"(cycle {cycle}) — thử key tiếp..."
+                        )
+                        _time.sleep(1)  # Delay nhẹ giữa các key
+                        continue
+                    else:
+                        # Lỗi khác (không phải rate limit) → raise ngay
+                        raise
+
+            # Nếu đã ở cycle cuối mà vẫn không thành công
+            if cycle == MAX_SLEEP_CYCLES:
+                self.logger.error(
+                    f"[{self.name}] ❌ Đã thử {pool_size} keys × {MAX_SLEEP_CYCLES + 1} vòng "
+                    f"= {pool_size * (MAX_SLEEP_CYCLES + 1)} lần gọi mà vẫn bị Rate Limit. "
+                    f"Bỏ cuộc."
+                )
+                raise last_error  # type: ignore[misc]
 
     @staticmethod
     def _clean_json(text: str) -> str:
