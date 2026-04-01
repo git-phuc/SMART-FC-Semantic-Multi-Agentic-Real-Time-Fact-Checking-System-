@@ -1,0 +1,15 @@
+streamlit
+python-dotenv
+requests
+beautifulsoup4
+pydantic
+langchain
+langchain-core
+langchain-openai
+langchain-community
+langchain-groq
+langgraph
+pymongo
+sentence-transformers
+torch
+torchvision

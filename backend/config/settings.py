@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 # Load .env file
 env_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(dotenv_path=env_path)
+load_dotenv(dotenv_path=env_path, override=True)
 
 
 # ============================================================
@@ -68,6 +68,15 @@ _gemini_key_index = 0
 _groq_pool_keys = []
 _groq_key_index = 0
 
+_hf_pool_keys = []
+_hf_key_index = 0
+
+_openrouter_pool_keys = []
+_openrouter_key_index = 0
+
+_openai_pool_keys = []
+_openai_key_index = 0
+
 def get_next_groq_key() -> Optional[str]:
     """Rút API Key Groq theo cơ chế xoay vòng."""
     global _groq_pool_keys, _groq_key_index
@@ -103,6 +112,58 @@ def get_next_gemini_key() -> Optional[str]:
     if _gemini_pool_keys:
         key = _gemini_pool_keys[_gemini_key_index % len(_gemini_pool_keys)]
         _gemini_key_index += 1
+        return key
+
+    return None
+
+def get_next_hf_key() -> Optional[str]:
+    """Rút API Key HuggingFace theo cơ chế xoay vòng."""
+    global _hf_pool_keys, _hf_key_index
+    
+    if not _hf_pool_keys:
+        import os
+        keys_str = os.getenv("HF_POOL_KEYS", "")
+        if keys_str:
+            _hf_pool_keys = [k.strip() for k in keys_str.split(",") if k.strip()]
+            
+    if _hf_pool_keys:
+        key = _hf_pool_keys[_hf_key_index % len(_hf_pool_keys)]
+        _hf_key_index += 1
+        return key
+
+    return None
+
+def get_next_openrouter_key() -> Optional[str]:
+    """Rút API Key OpenRouter theo cơ chế xoay vòng."""
+    global _openrouter_pool_keys, _openrouter_key_index
+    
+    if not _openrouter_pool_keys:
+        import os
+        keys_str = os.getenv("OPENROUTER_POOL_KEYS", "")
+        if keys_str:
+            _openrouter_pool_keys = [k.strip() for k in keys_str.split(",") if k.strip()]
+            
+    if _openrouter_pool_keys:
+        key = _openrouter_pool_keys[_openrouter_key_index % len(_openrouter_pool_keys)]
+        _openrouter_key_index += 1
+        return key
+
+    return None
+
+
+def get_next_openai_key() -> Optional[str]:
+    """Rút API Key OpenAI Native theo cơ chế vòng lặp."""
+    global _openai_pool_keys, _openai_key_index
+    
+    if not _openai_pool_keys:
+        import os
+        keys_str = os.getenv("OPENAI_POOL_KEYS", "")
+        if keys_str:
+            _openai_pool_keys = [k.strip() for k in keys_str.split(",") if k.strip()]
+            
+    if _openai_pool_keys:
+        key = _openai_pool_keys[_openai_key_index % len(_openai_pool_keys)]
+        _openai_key_index += 1
         return key
 
     return None

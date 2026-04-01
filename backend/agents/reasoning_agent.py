@@ -149,18 +149,23 @@ class ReasoningAgent(BaseAgent):
             if domain:
                 domains[domain] = url
 
+        assigned_urls = set()
+
         def _find_real_url(claimed_url: str, source_name: str) -> str:
-            """Tìm URL thật. Nếu không thấy, auto trả về URL đầu tiên làm fallback an toàn."""
+            """Tìm URL thật. Nếu không thấy, cố gắng tìm một URL chưa được dùng làm fallback an toàn."""
             original_claimed_url = claimed_url
 
             # 1. Match chính xác URL
             if claimed_url in real_urls:
+                assigned_urls.add(claimed_url)
                 return claimed_url
 
             # 2. Match theo domain
             claimed_domain = urlparse(claimed_url).netloc.replace("www.", "")
             if claimed_domain and claimed_domain in domains:
-                return domains[claimed_domain]
+                url = domains[claimed_domain]
+                assigned_urls.add(url)
+                return url
 
             # 3. Match theo tên báo (source_name) vs Title
             source_lower = source_name.lower() if source_name else ""
@@ -175,15 +180,23 @@ class ReasoningAgent(BaseAgent):
                     best_url = url
             
             if best_url:
+                assigned_urls.add(best_url)
                 return best_url
                 
             # Tôn trọng quyết định của AI nếu nó báo không có nguồn
             if not claimed_url or "không có" in source_lower or "unknown" in source_lower or source_lower == "n/a":
                 return ""
                 
-            # TRƯỜNG HỢP XẤU NHẤT: Bắt buộc nhét URL thật đầu tiên vào để chống ảo giác
-            # Chỉ áp dụng khi AI cố tình bịa 1 URL nào đó mà không khớp
-            return list(real_urls.keys())[0] if real_urls else original_claimed_url
+            # TRƯỜNG HỢP XẤU NHẤT: Bắt buộc nhét URL thật vào để chống ảo giác
+            # Ưu tiên lấy URL chưa được gán cho luận điểm nào
+            available_urls = [u for u in real_urls.keys() if u not in assigned_urls]
+            if available_urls:
+                fallback_url = available_urls[0]
+            else:
+                fallback_url = list(real_urls.keys())[0] if real_urls else original_claimed_url
+
+            assigned_urls.add(fallback_url)
+            return fallback_url
 
         # Fix URLs trong arguments
         for arg in verdict.get("arguments", []):

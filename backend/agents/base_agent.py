@@ -83,8 +83,12 @@ class BaseAgent(ABC):
 
         # Xác định provider hiện tại
         model_name_str = str(getattr(self.llm, "model_name", getattr(self.llm, "model", ""))).lower()
-        is_gemini = "gemini" in model_name_str
-        is_groq = "llama" in model_name_str or "mixtral" in model_name_str or "deepseek" in model_name_str
+        base_url_str_check = str(getattr(self.llm, "openai_api_base", getattr(self.llm, "base_url", ""))).lower()
+        is_gemini = "gemini" in model_name_str or "google" in base_url_str_check
+        is_groq = "groq" in base_url_str_check
+        is_hf = "huggingface" in base_url_str_check
+        is_openrouter = "openrouter" in base_url_str_check
+        is_openai = "api.openai.com" in base_url_str_check
 
         # Load pool keys
         if is_gemini:
@@ -95,6 +99,21 @@ class BaseAgent(ABC):
             pool_keys_str = os.getenv("GROQ_POOL_KEYS", "")
             get_next_key = get_next_groq_key
             provider_name = "Groq"
+        elif is_hf:
+            from config.settings import get_next_hf_key
+            pool_keys_str = os.getenv("HF_POOL_KEYS", "")
+            get_next_key = get_next_hf_key
+            provider_name = "HuggingFace"
+        elif is_openrouter:
+            from config.settings import get_next_openrouter_key
+            pool_keys_str = os.getenv("OPENROUTER_POOL_KEYS", "")
+            get_next_key = get_next_openrouter_key
+            provider_name = "OpenRouter"
+        elif is_openai:
+            from config.settings import get_next_openai_key
+            pool_keys_str = os.getenv("OPENAI_POOL_KEYS", "")
+            get_next_key = get_next_openai_key
+            provider_name = "OpenAI"
         else:
             pool_keys_str = ""
             get_next_key = lambda: None
@@ -157,7 +176,7 @@ class BaseAgent(ABC):
                     last_error = e
                     error_str = str(e).lower()
                     is_rate_limit = any(kw in error_str for kw in
-                                       ["rate_limit", "429", "413", "exhausted", "resource_exhausted"])
+                                       ["rate_limit", "429", "413", "exhausted", "resource_exhausted", "402", "depleted", "503", "unavailable", "high demand"])
 
                     if is_rate_limit:
                         # Lấy snippet lỗi gốc để debug

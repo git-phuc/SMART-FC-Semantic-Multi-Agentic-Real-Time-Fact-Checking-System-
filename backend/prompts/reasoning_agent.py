@@ -51,12 +51,12 @@ Giá trị của "confidence_score" phải là một số thập phân (float) p
             "title": "Tên luận điểm",
             "content": "Giải thích chi tiết sự đồng thuận/mâu thuẫn",
             "evidence": "Trích nguyên văn từ dữ liệu thu thập",
-            "source_name": "Tên báo (ví dụ: VTV News)",
-            "source_url": "URL của bài báo"
+            "source_name": "Tên báo (ví dụ: VTV News) - YÊU CẦU: Nếu có nhiều nguồn, mỗi luận điểm trong mảng này nên lấy từ một nguồn/URL KHÁC NHAU để đối chiếu chéo khách quan.",
+            "source_url": "URL của bài báo (KHÔNG ĐƯỢC để trống nếu có, mỗi luận điểm nên dùng một URL khác nhau nếu có thể)"
         }
     ],
     "reasoning": {
-        "evidence_assessment": "Đánh giá chất lượng của nguồn tin thu thập được",
+        "evidence_assessment": "Đánh giá chất lượng và sự đa dạng của các nguồn tin thu thập được",
         "supporting_evidence": ["Trích dẫn ngắn gọn nếu có"],
         "contradicting_evidence": ["Trích dẫn ngắn gọn nếu có"],
         "logical_analysis": "Giải thích logic: Vì sao dữ liệu này DẪN ĐẾN việc chọn Rule và Verdict hiện tại."
@@ -80,9 +80,10 @@ USER_PROMPT_TEMPLATE = """Kiểm chứng thông tin sau và đưa ra phán đị
 4. Tính toán điểm `confidence_score` dựa trên cấp độ uy tín của nguồn (Cấp 1, 2, 3, 4).
 5. Kết luận verdict dựa trên tổng hợp bằng chứng.
 
-## 🚨 QUY TẮC VỀ URLs (CỰC KỲ QUAN TRỌNG):
+## 🚨 QUY TẮC VỀ URLs VÀ NGUỒN TIẾP CẬN (CỰC KỲ QUAN TRỌNG):
 - CHỈ ĐƯỢC dùng URLs có trong dữ liệu đã cung cấp ở trên.
 - TUYỆT ĐỐI KHÔNG tự tạo, bịa đặt, hay đoán URL.
+- BẮT BUỘC SỬ DỤNG NHIỀU NGUỒN (Cross-referencing): Cố gắng phân bổ 3 luận điểm từ 3 tờ báo (source_url) KHÁC NHAU trong danh sách dữ liệu. Không dùng chung một URL duy nhất cho tất cả luận điểm (trừ khi dữ liệu cung cấp chỉ có duy nhất 1 URL khả dụng).
 - Nếu không có URL thật → để source_url = "".
 - Vi phạm quy tắc này = KẾT QUẢ SAI.
 
