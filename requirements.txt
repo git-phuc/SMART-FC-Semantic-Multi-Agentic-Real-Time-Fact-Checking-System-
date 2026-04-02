@@ -11,5 +11,8 @@ langchain-groq
 langgraph
 pymongo
 sentence-transformers
+underthesea
 torch
 torchvision
+rich
+tavily-python

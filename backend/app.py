@@ -24,63 +24,95 @@ _preload_cache()  # Chạy 1 lần khi app khởi động, cache lại cho các 
 # === Custom CSS ===
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@400;600&display=swap');
     
     html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
+        font-family: 'Outfit', 'Inter', sans-serif;
     }
+    
+    /* Nền Darkmode Cinematic */
+    .stApp {
+        background-color: #0d1117;
+        color: #c9d1d9;
+    }
+    
+    /* Giao diện huy hiệu thời gian (Glassmorphism) */
     .inference-badge {
         display: inline-block;
-        padding: 5px 15px;
+        padding: 6px 18px;
         border-radius: 20px;
         font-size: 0.85em;
         font-weight: 700;
         margin-bottom: 20px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        border: 1px solid rgba(255,255,255,0.2);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        border: 1px solid rgba(255,255,255,0.1);
+        backdrop-filter: blur(10px);
+        letter-spacing: 0.5px;
     }
     .badge-cache {
-        background: linear-gradient(135deg, #00b894, #00cec9);
-        color: white;
+        background: linear-gradient(135deg, rgba(0,230,118,0.2), rgba(29,233,182,0.4));
+        color: #00e676;
+        border-color: rgba(0, 230, 118, 0.4);
     }
     .badge-pipeline {
-        background: linear-gradient(135deg, #6c5ce7, #a29bfe);
-        color: white;
+        background: linear-gradient(135deg, rgba(108,92,231,0.2), rgba(162,155,254,0.4));
+        color: #a29bfe;
+        border-color: rgba(162, 155, 254, 0.4);
     }
+    
+    /* Khung kết quả chính (Verdict Box Cinematic) */
     .verdict-box {
-        padding: 20px;
-        border-radius: 12px;
+        padding: 25px;
+        border-radius: 16px;
         border-left: 8px solid;
-        margin-bottom: 20px;
-        background-color: rgba(128, 128, 128, 0.05);
+        margin-bottom: 25px;
+        margin-top: 10px;
+        background: rgba(22, 27, 34, 0.8);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        backdrop-filter: blur(12px);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
-    .verdict-THẬT { border-color: #00b894; }
-    .verdict-GIẢ { border-color: #d63031; }
-    .verdict-CHƯA_XÁC_ĐỊNH { border-color: #fdcb6e; }
+    .verdict-box:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+    }
+    .verdict-THẬT { border-color: #00e676; }
+    .verdict-GIẢ { border-color: #ff1744; }
+    .verdict-CHƯA_XÁC_ĐỊNH { border-color: #ffeb3b; }
+    
+    /* Tiêu đề kết quả */
     .verdict-title {
-        font-size: 1.6rem;
+        font-family: 'Outfit', sans-serif;
+        font-size: 1.8rem;
         font-weight: 800;
-        margin-bottom: 5px;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+    }
+    .verdict-score {
+        font-size: 1.1em;
+        opacity: 0.85;
+        font-weight: 300;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # === Giao diện Sidebar ===
 with st.sidebar:
-    st.markdown("### 🧬 Về SMART-FC")
-    st.caption("Semantic Multi-Agentic Real-Time Fact-Checking. Khung hệ thống điểm chuẩn kiểm chứng thông tin tự động tiếng Việt.")
+    st.markdown("## 🧬 SMART-FC v5.0")
+    st.caption("Hệ thống điểm chuẩn kiểm chứng thông tin tự động tiếng Việt (NCKH). Vận hành dựa trên nền tảng Multi-Agentic thời gian thực.")
     
     st.divider()
-    st.markdown("### 🧠 Kiến trúc Mix-LLM")
-    st.info("Trình truy vấn: **LLaMA-3.1-8B**")
-    st.info("Trình trích xuất: **Gemini-2.5-Flash**")
-    st.warning("Trình suy luận: **LLaMA-3.3-70B**")
+    st.markdown("### 🤖 Tri-Agent Mix-AI")
+    st.info("⚡ T.Truy vấn: **Groq Llama-3.1**")
+    st.success("🧠 T.Trích xuất: **Gemini 2.5 Flash Lite**")
+    st.error("⚖️ T.Suy luận: **OpenAI GPT-4o-Mini**")
     
     st.divider()
-    st.markdown("### ⚡ Công nghệ Tăng tốc")
-    st.success("✔ Two-Stage Semantic Cache")
-    st.success("✔ MongoDB Vector Search")
-    st.success("✔ Round-Robin API Rotation")
+    st.markdown("### ⚡ Công nghệ Nền tảng")
+    st.success("✔ Lớp đệm Vector-NER Cache kép")
+    st.success("✔ Luân chuyển API Round-Robin chống Rate limit")
+    st.success("✔ Web Crawler Bất đồng bộ (Tavily Fallback)")
 
 # === Giao diện chính ===
 st.title("🤖 SMART-FC: Hệ thống Kiểm chứng Tin giả")
@@ -140,8 +172,8 @@ def render_verdict(verdict_data: dict, time_taken: float = 0.0, from_cache: bool
 
     st.markdown(f'''
     <div class="verdict-box verdict-{v_class}">
-        <div class="verdict-title">Phán định: <span style="color: {color};">{verdict_text}</span></div>
-        <div style="font-size: 1.1em; opacity: 0.8;">Độ tin cậy: <strong>{confidence:.1%}</strong></div>
+        <div class="verdict-title">PHÁN ĐỊNH: <span style="color: {color};">{verdict_text}</span></div>
+        <div class="verdict-score">Điểm tin cậy (Confidence): <strong style="color: {color};">{confidence:.1%}</strong></div>
     </div>
     ''', unsafe_allow_html=True)
     
