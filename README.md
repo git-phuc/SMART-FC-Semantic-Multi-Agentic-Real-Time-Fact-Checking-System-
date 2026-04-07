@@ -52,8 +52,29 @@ Hệ thống được thiết kế theo hướng chuyên biệt hóa (Tri-Agent)
 ---
 
 ## 📋 Mục lục
-1. [Yêu cầu hệ thống](#-yêu-cầu-hệ-thống)
-2. [Hướng dẫn Cài đặt & Triển khai Đám mây](#-hướng-dẫn-cài-đặt--triển-khai-đám-mây)
+1. [🌟 Chức năng nổi bật](#-chức-năng-nổi-bật-cập-nhật-phiên-bản-v50)
+2. [🏗️ Kiến trúc luồng xử lý (Workflow Architecture)](#-kiến-trúc-luồng-xử-lý-workflow-architecture)
+3. [🤖 Tổ hợp Mô hình Ngôn ngữ (Agent Models)](#-tổ-hợp-mô-hình-ngôn-ngữ-agent-models)
+4. [📊 Benchmark Dataset & Evaluation Pipeline](#-benchmark-dataset--evaluation-pipeline)
+5. [💻 Yêu cầu hệ thống](#-yêu-cầu-hệ-thống)
+6. [🚀 Hướng dẫn Cài đặt & Triển khai](#-hướng-dẫn-cài-đặt--triển-khai-đám-mây)
+7. [💡 Giải pháp Tối ưu hóa Kỹ thuật](#-giải-pháp-tối-ưu-hóa-kỹ-thuật-tips--tricks)
+
+---
+
+## 📊 Benchmark Dataset & Evaluation Pipeline
+
+Nhằm phục vụ cho việc đánh giá khách quan độ chính xác của hệ thống, một mô-đun **Evaluation** độc lập đã được thiết kế:
+
+### 1. Tập dữ liệu đánh giá FAKE NEWS (100 Samples Benchmark)
+Tập dữ liệu "GIẢ" được thiết kế công phu và cực kỳ sát thực tế, tập trung khai thác các luận điệu xuyên tạc, chống phá chính quyền và tin đồn thất thiệt:
+- **Crawled Data (Xấp xỉ 34%):** Các bài báo giả, tin đồn thất thiệt ở thế giới thực được Crawler thu thập tự động từ chuyên trang bóc phốt của *Cổng thông tin điện tử Đảng Cộng Sản, Báo Quân Đội Nhân Dân (qdnd.vn), Báo Công An Nhân Dân (cand.com.vn)* và *tingia.gov.vn*.
+- **AI-Mutated Data (Xấp xỉ 66%):** Dữ liệu đột biến sinh ra từ AI. Thay vì dùng tin giả dễ vạch trần, chúng tôi đưa tin CHUẨN vào cho các mô hình (LLMs) tự động chế tác (*Mutate*) thành các kịch bản chống phá tinh vi với 3 mức độ (từ dễ đến cực khó). 
+
+### 2. Giao diện Đánh giá tự động (CLI Eval Runner)
+- Công cụ `eval_runner.py` gọi luồng Pipeline thô (loại bỏ cơ chế Cache để AI phải làm việc hoàn toàn độc lập).
+- Được thiết kế với giao diện Terminal hiện đại (sử dụng thư viện `rich`), hiển thị trực quan tiến trình (Spinner), tô màu phán quyết (Verdict) và thời gian phản hồi ở chuẩn hình ảnh xuất bản NCKH.
+- Cơ chế **Auto-Resume & In-place Saving**: Tự động lưu tiến trình từng bài. Nếu bị giới hạn Rate-limit hoặc ngắt mạng, có thể chạy lại lệnh mà không phải test lại những file đã chấm điểm.
 
 ---
 
