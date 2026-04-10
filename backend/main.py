@@ -61,6 +61,15 @@ def display_verdict(state: dict) -> None:
         border_style=color,
     ))
 
+    # === Chain of Thought ===
+    cot = verdict.get("chain_of_thought", "")
+    if cot:
+        console.print(Panel(
+            f"[italic]{cot}[/italic]",
+            title="🧠 Chuỗi suy luận (Chain of Thought)",
+            border_style="magenta",
+        ))
+
     # === Tóm tắt kết luận ===
     summary = verdict.get("summary", verdict.get("explanation", "Không có giải thích."))
     console.print(Panel(

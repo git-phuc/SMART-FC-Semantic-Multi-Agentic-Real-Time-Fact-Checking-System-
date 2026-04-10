@@ -91,9 +91,9 @@ class MongoSemanticCache:
         logger.info("[Cache] Embedding model loaded successfully")
 
         # --- LLM cho Query Normalization (dùng Groq, siêu nhanh ~1s) ---
-        from config.settings import get_llm_for_agent
-        self.normalizer_llm = get_llm_for_agent("AGENT1")
-        logger.info("[Cache] Query normalizer LLM loaded (AGENT1/Groq)")
+        from agents.query_agent import QueryAgent
+        self.normalizer_agent = QueryAgent()
+        logger.info("[Cache] Query normalizer Agent loaded (AGENT1/Groq)")
 
     # ============================================================
     # Stage 0: Query Normalization (LLM-based)
@@ -117,10 +117,12 @@ class MongoSemanticCache:
           → "thẻ bhyt giấy hủy bỏ 15/05/2026 phí 150000 vssid tạm dừng quyền lợi"
         """
         try:
-            from langchain_core.messages import HumanMessage  # type: ignore[import-untyped]
             prompt = self._NORMALIZE_PROMPT.format(query=user_query)
-            response = self.normalizer_llm.invoke([HumanMessage(content=prompt)])
-            normalized = str(response.content).strip().strip('"').strip()
+            normalized = self.normalizer_agent.call_llm(
+                system_prompt="Bạn là chuyên gia ngôn ngữ học. Chỉ trả về một câu duy nhất.",
+                user_prompt=prompt
+            )
+            normalized = normalized.strip().strip('"').strip()
             # Fallback nếu LLM trả về rỗng hoặc quá dài
             if not normalized or len(normalized) > len(user_query):
                 logger.warning("[Cache] Normalize returned empty/too long, using raw query")
@@ -307,17 +309,21 @@ class MongoSemanticCache:
                 )
 
                 # Check chống false positive tên người (vd: Tô Lâm vs Volodin)
-                # Nếu query mới có tên người, phải có ít nhất 1 tên xuất hiện trong cache
+                # Nếu query mới có tên người, phải ĐẢM BẢO toàn bộ các tên người đều xuất hiện trong cache
+                # Tránh tình trạng: Query = "Tô Lâm và Putin" map nhầm vào cache "Tô Lâm" đơn thuần
                 person_match = True
                 if new_entities["per"]:
                     cached_per = cached_entities.get("per", set())
-                    person_match = False
                     for np in new_entities["per"]:
+                        # Tìm xem tên np có khớp một phần với cp nào trong cached không
+                        match_found_for_this_person = False
                         for cp in cached_per:
                             if np in cp or cp in np:
-                                person_match = True
+                                match_found_for_this_person = True
                                 break
-                        if person_match:
+                        
+                        if not match_found_for_this_person:
+                            person_match = False
                             break
 
                 if nums_match and person_match:

@@ -19,7 +19,7 @@ def _preload_cache():
     return get_cache()
 
 
-_preload_cache()  # Chạy 1 lần khi app khởi động, cache lại cho các lần sau
+_preload_cache()
 
 # === Custom CSS ===
 st.markdown("""
@@ -94,6 +94,19 @@ st.markdown("""
         opacity: 0.85;
         font-weight: 300;
     }
+
+    /* Chain of Thought box */
+    .cot-box {
+        background: rgba(108, 92, 231, 0.08);
+        border: 1px solid rgba(162, 155, 254, 0.25);
+        border-radius: 10px;
+        padding: 14px 18px;
+        font-size: 0.92em;
+        line-height: 1.7;
+        color: #b8b4d8;
+        font-style: italic;
+        margin-bottom: 6px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -167,23 +180,34 @@ def render_verdict(verdict_data: dict, time_taken: float = 0.0, from_cache: bool
     color = color_map.get(verdict_text, "gray")
 
     v_class = "CHƯA_XÁC_ĐỊNH"
-    if verdict_text == "THẬT": v_class = "THẬT"
-    elif verdict_text == "GIẢ": v_class = "GIẢ"
+    if verdict_text == "THẬT":
+        v_class = "THẬT"
+    elif verdict_text == "GIẢ":
+        v_class = "GIẢ"
 
+    # Verdict box chính
     st.markdown(f'''
     <div class="verdict-box verdict-{v_class}">
         <div class="verdict-title">PHÁN ĐỊNH: <span style="color: {color};">{verdict_text}</span></div>
         <div class="verdict-score">Điểm tin cậy (Confidence): <strong style="color: {color};">{confidence:.1%}</strong></div>
     </div>
     ''', unsafe_allow_html=True)
-    
+
+    # Tóm tắt phán quyết
     st.info(verdict_data.get("summary", "Không có tóm tắt."))
 
+    # ── Chain of Thought (mới) ────────────────────────────────
+    chain_of_thought = verdict_data.get("chain_of_thought", "").strip()
+    if chain_of_thought:
+        with st.expander("🧠 Chuỗi suy luận của AI (Chain of Thought)", expanded=False):
+            st.markdown(
+                f'<div class="cot-box">{chain_of_thought}</div>',
+                unsafe_allow_html=True,
+            )
+
+    # ── Luận điểm & Bằng chứng ───────────────────────────────
     raw_arguments = verdict_data.get("arguments", [])
-    # Lọc bỏ các luận điểm không có link (ví dụ AI tự nói "không tìm thấy")
     valid_arguments = [arg for arg in raw_arguments if arg.get("source_url", "").strip()]
-    
-    # Giới hạn hiển thị tối đa 3 luận điểm (1-3)
     display_arguments = valid_arguments[:3]
 
     if display_arguments:
@@ -284,4 +308,3 @@ if prompt := st.chat_input("Nhập tin đồn bạn muốn kiểm chứng..."):
             })
         else:
             st.warning("⚠️ Pipeline kết thúc nhưng không có kết quả. Vui lòng thử lại.")
-

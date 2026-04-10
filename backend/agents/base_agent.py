@@ -6,7 +6,7 @@ Cung cấp shared interface và utility methods.
 import json
 import re
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Union
 
 from langchain_core.messages import HumanMessage, SystemMessage  # type: ignore[import-untyped]
 
@@ -18,6 +18,20 @@ class BaseAgent(ABC):
     """
     Abstract base class cho mọi agent.
     Mỗi agent kế thừa class này và implement method `run()`.
+
+    Kiến trúc pipeline:
+        Agent 1 (QueryAgent / Groq):
+            - Sinh queries + crawl dữ liệu thô
+            - KHÔNG phán xét, KHÔNG phân loại claim
+
+        Agent 2 (ExtractorAgent / Gemini):
+            - Đọc toàn bộ crawled data + tóm tắt từng bài
+            - KHÔNG lọc, KHÔNG suy luận về claim
+
+        Agent 3 (ReasoningAgent / GPT-4o-mini):
+            - Lọc bài liên quan / reject bài không liên quan
+            - Tự đánh giá khả năng kiểm chứng của claim
+            - Suy luận → verdict THẬT / GIẢ / CHƯA XÁC ĐỊNH
     """
 
     # Giới hạn ký tự tối đa cho prompt (mặc định cho Groq free tier)
@@ -71,6 +85,10 @@ class BaseAgent(ABC):
             )
 
         log_agent_step(self.logger, self.name, "Calling LLM")
+
+        # Sanitize text to remove surrogate characters and \x00 which crash the OpenAI parser (400 Bad Request)
+        user_prompt = user_prompt.replace('\x00', '').encode('utf-8', 'replace').decode('utf-8')
+        system_prompt = system_prompt.replace('\x00', '').encode('utf-8', 'replace').decode('utf-8')
 
         messages = [
             SystemMessage(content=system_prompt),
@@ -179,16 +197,14 @@ class BaseAgent(ABC):
                                        ["rate_limit", "429", "413", "exhausted", "resource_exhausted", "402", "depleted", "503", "unavailable", "high demand"])
 
                     if is_rate_limit:
-                        # Lấy snippet lỗi gốc để debug
                         err_snippet = str(e)[:200]
                         self.logger.warning(
                             f"[{self.name}] ⚠️ Key #{key_idx + 1}/{pool_size} bị 429 "
                             f"(cycle {cycle}) — thử key tiếp... | Lỗi: {err_snippet}"
                         )
-                        _time.sleep(1)  # Delay nhẹ giữa các key
+                        _time.sleep(1)
                         continue
                     else:
-                        # Lỗi khác (không phải rate limit) → raise ngay
                         raise
 
             # Nếu đã ở cycle cuối mà vẫn không thành công
@@ -198,12 +214,14 @@ class BaseAgent(ABC):
                     f"= {pool_size * (MAX_SLEEP_CYCLES + 1)} lần gọi mà vẫn bị Rate Limit. "
                     f"Bỏ cuộc."
                 )
-                raise last_error  # type: ignore[misc]
+                if last_error:
+                    raise last_error
+                else:
+                    raise RuntimeError("No API keys available or all failed without exception.")
 
     @staticmethod
     def _clean_json(text: str) -> str:
         """Sửa các lỗi JSON phổ biến từ LLM (trailing comma, text thừa)."""
-        # Xóa trailing commas: ,] → ] và ,} → }
         text = re.sub(r",\s*([}\]])", r"\1", text)
         return text.strip()
 
@@ -255,9 +273,8 @@ class BaseAgent(ABC):
         return {"raw_response": response, "parse_error": True}
 
     @staticmethod
-    def _repair_truncated_json(text: str) -> dict | None:
+    def _repair_truncated_json(text: str) -> Optional[dict]:
         """Thử sửa JSON bị cắt giữa chừng bằng cách đóng ngoặc thiếu."""
-        # Đếm ngoặc chưa đóng
         open_braces = text.count("{") - text.count("}")
         open_brackets = text.count("[") - text.count("]")
 

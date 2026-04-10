@@ -15,12 +15,21 @@ from utils.logger import get_logger
 logger = get_logger("Graph.Workflow")
 
 
+def should_continue(state: VerificationState) -> str:
+    """Quyết định có vòng lại QueryAgent hay kết thúc."""
+    if state.get("feedback_to_agent1"):
+        logger.info("[Workflow] 🔄 Feedback Loop triggered. Routing back to query_agent...")
+        return "query_agent"
+    return END
+
 def create_workflow() -> CompiledStateGraph:
     """
     Tạo LangGraph workflow với 3 nodes (3 agents).
 
     Flow:
-        START → query_agent → extractor_agent → reasoning_agent → END
+        START → query_agent → extractor_agent → reasoning_agent
+        reasoning_agent → (Nếu Feedback) → query_agent
+        reasoning_agent → (Nếu OK) → END
 
     Returns:
         Compiled StateGraph sẵn sàng chạy
@@ -42,7 +51,16 @@ def create_workflow() -> CompiledStateGraph:
     workflow.add_edge(START, "query_agent")
     workflow.add_edge("query_agent", "extractor_agent")
     workflow.add_edge("extractor_agent", "reasoning_agent")
-    workflow.add_edge("reasoning_agent", END)
+    
+    # Kết nối có điều kiện (Conditional Edges)
+    workflow.add_conditional_edges(
+        "reasoning_agent",
+        should_continue,
+        {
+            "query_agent": "query_agent",
+            END: END
+        }
+    )
 
     # Compile graph
     app = workflow.compile()
@@ -63,16 +81,13 @@ def run_verification(claim: str) -> dict:
     """
     logger.info(f"[Workflow] Starting verification for: {claim[:100]}...")
 
-    # Tạo workflow
     app = create_workflow()
 
-    # Tạo initial state
     initial_state = {
         "user_input": claim,
         "agent_logs": [],
     }
 
-    # Chạy pipeline
     final_state = app.invoke(initial_state)
 
     logger.info("[Workflow] Verification complete!")
@@ -96,7 +111,6 @@ def run_verification_with_cache(claim: str) -> dict:
     """
     import time
 
-    # --- Lấy singleton cache (embedder chỉ load 1 lần) ---
     from database.mongo_cache import get_cache
     cache = get_cache()
 
@@ -114,16 +128,14 @@ def run_verification_with_cache(claim: str) -> dict:
                     f"time={cache_time:.2f}s | "
                     f"cached_query=\"{cache_result.get('cached_query', '')[:60]}...\""
                 )
-                # Inject original cached query into verdict for UI transparency
                 verdict_data = cache_result["data"]
-                
-                # --- Quick Rewrite (Groq): Sửa ngữ cảnh của Summary cho khớp với câu hỏi của User ---
+
+                # Quick Rewrite (Groq): Sửa ngữ cảnh summary cho khớp câu hỏi của user
                 try:
-                    from config.settings import get_llm_for_agent
-                    from langchain_core.messages import HumanMessage  # type: ignore[import-untyped]
-                    fast_llm = get_llm_for_agent("AGENT1")
+                    from agents.query_agent import QueryAgent
+                    fast_agent = QueryAgent()
                     original_summary = verdict_data.get("summary", "")
-                    
+
                     rewrite_prompt = (
                         f"Viết lại đoạn tóm tắt kết quả kiểm chứng dưới đây sao cho các từ ngữ/chủ ngữ giống trực tiếp với lời văn của tin đồn mà người dùng vừa hỏi.\n"
                         f"TUYỆT ĐỐI GIỮ NGUYÊN ý nghĩa, kết luận và các bằng chứng.\n"
@@ -132,17 +144,22 @@ def run_verification_with_cache(claim: str) -> dict:
                         f"Tóm tắt cũ (cần viết lại): \"{original_summary}\"\n\n"
                         f"Tóm tắt mới:"
                     )
-                    rewrite_res = fast_llm.invoke([HumanMessage(content=rewrite_prompt)])
-                    new_summary = str(rewrite_res.content).strip().strip('"')
+                    new_summary = fast_agent.call_llm(
+                        "Bạn là một biên tập viên tin tức cần mẫn.",
+                        rewrite_prompt
+                    )
+                    new_summary = new_summary.strip().strip('"')
                     if new_summary:
                         verdict_data["summary"] = new_summary
-                        logger.info(f"[Workflow] Dùng Groq viết lại summary thành công ({time.time() - start_cache:.2f}s)")
+                        logger.info(
+                            f"[Workflow] Dùng Groq viết lại summary thành công "
+                            f"({time.time() - start_cache:.2f}s)"
+                        )
                 except Exception as rewrite_err:
                     logger.warning(f"[Workflow] Lỗi rewrite summary: {rewrite_err}")
 
-                verdict_data["cached_query"] = claim  # Trả lại câu của user, không báo câu DB nữa
+                verdict_data["cached_query"] = claim
 
-                # Trả state giống format của pipeline
                 return {
                     "user_input": claim,
                     "verdict": verdict_data,

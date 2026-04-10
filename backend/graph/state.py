@@ -39,3 +39,7 @@ class VerificationState(TypedDict, total=False):
 
     # Shared logging
     agent_logs: list[str]
+
+    # Flow control (Feedback loop)
+    retry_count: int
+    feedback_to_agent1: str

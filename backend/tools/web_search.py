@@ -35,15 +35,19 @@ TAVILY_POOL_KEYS = [k.strip() for k in TAVILY_POOL_KEYS if k.strip()]
 if TAVILY_API_KEY and TAVILY_API_KEY not in TAVILY_POOL_KEYS:
     TAVILY_POOL_KEYS.insert(0, TAVILY_API_KEY)
 
+import threading
+
 _tavily_request_counter = 0
+_tavily_lock = threading.Lock()
 
 def get_tavily_key() -> str:
     """Xoay vòng lấy key từ pool để chống rate limit."""
     global _tavily_request_counter
     if not TAVILY_POOL_KEYS:
         return ""
-    key = TAVILY_POOL_KEYS[_tavily_request_counter % len(TAVILY_POOL_KEYS)]
-    _tavily_request_counter += 1
+    with _tavily_lock:
+        key = TAVILY_POOL_KEYS[_tavily_request_counter % len(TAVILY_POOL_KEYS)]
+        _tavily_request_counter += 1
     return key
 
 # ============================================================
@@ -326,58 +330,76 @@ def search_tavily(query: str, num_results: int = 5,
                   include_domains: list[str] | None = None) -> list[dict]:
     """
     Tavily Search API với raw_content — lấy toàn bộ nội dung bài báo.
+    Tự động xoay key khi gặp bất kỳ lỗi nào (432, 429, timeout...).
     """
-    api_key = get_tavily_key()
-    if not api_key:
+    if not TAVILY_POOL_KEYS:
         return []
 
-    payload = {
-        "api_key": api_key,
-        "query": query,
-        "search_depth": "advanced",
-        "max_results": num_results,
-        "include_answer": False,
-        "include_raw_content": True,
-        "include_images": False,
-        "exclude_domains": ENGLISH_ONLY_DOMAINS,
-    }
-    if include_domains:
-        payload["include_domains"] = include_domains
+    # Thử tất cả key trong pool, key nào lỗi thì đổi key khác ngay
+    for attempt in range(len(TAVILY_POOL_KEYS)):
+        api_key = get_tavily_key()
 
-    try:
-        response = requests.post(
-            "https://api.tavily.com/search",
-            json=payload,
-            timeout=20,
-        )
-        response.raise_for_status()
-        data = response.json()
-    except Exception as e:
-        logger.warning(f"[Tavily] Error: {e}")
-        return []
+        payload = {
+            "api_key": api_key,
+            "query": query,
+            "search_depth": "advanced",
+            "max_results": num_results,
+            "include_answer": False,
+            "include_raw_content": True,
+            "include_images": False,
+            "exclude_domains": ENGLISH_ONLY_DOMAINS,
+        }
+        if include_domains:
+            payload["include_domains"] = include_domains
 
-    results = []
-    for r in data.get("results", []):
-        url = r.get("url", "")
-        # raw_content là full text bài, content là snippet
-        raw = r.get("raw_content", "") or ""
-        snippet = r.get("content", "") or ""
-        # Dung raw neu dai hon 500 chars va la tieng Viet
-        cleaned_raw = _clean_content(raw) if len(raw) > 500 else ""
-        # Bo content tieng Anh -- khong phu hop voi he thong tin Viet
-        if cleaned_raw and not _is_vietnamese(cleaned_raw):
-            logger.debug(f"[Tavily] Skip English content: {url[:60]}")
-            cleaned_raw = ""   # dung snippet ngan thay the
-        full_content = cleaned_raw if cleaned_raw else snippet
-        results.append({
-            "title": r.get("title", ""),
-            "url": url,
-            "content": full_content,
-            "snippet": snippet[:500],    # snippet ngắn, chỉ lưu 500 chars
-            "has_full_content": bool(cleaned_raw),
-            "score": _score_result(url, base_score=r.get("score", 0.75)),
-        })
-    return results
+        try:
+            response = requests.post(
+                "https://api.tavily.com/search",
+                json=payload,
+                timeout=7, # Giảm xuống 7 giây để kịp ném lỗi đổi key
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.Timeout:
+            key_suffix = api_key[-6:] if len(api_key) > 6 else api_key
+            logger.warning(
+                f"[Tavily] Key ...{key_suffix} TIMEOUT chậm mạng (attempt {attempt+1}/{len(TAVILY_POOL_KEYS)}) — đổi key khác"
+            )
+            continue
+        except Exception as e:
+            key_suffix = api_key[-6:] if len(api_key) > 6 else api_key
+            logger.warning(
+                f"[Tavily] Key ...{key_suffix} lỗi API (attempt {attempt+1}/{len(TAVILY_POOL_KEYS)}) — đổi key khác | {e}"
+            )
+            continue  # Thử key tiếp theo trong pool
+
+        # Parse kết quả thành công
+        results = []
+        for r in data.get("results", []):
+            url = r.get("url", "")
+            # raw_content là full text bài, content là snippet
+            raw = r.get("raw_content", "") or ""
+            snippet = r.get("content", "") or ""
+            # Dung raw neu dai hon 500 chars va la tieng Viet
+            cleaned_raw = _clean_content(raw) if len(raw) > 500 else ""
+            # Bo content tieng Anh -- khong phu hop voi he thong tin Viet
+            if cleaned_raw and not _is_vietnamese(cleaned_raw):
+                logger.debug(f"[Tavily] Skip English content: {url[:60]}")
+                cleaned_raw = ""   # dung snippet ngan thay the
+            full_content = cleaned_raw if cleaned_raw else snippet
+            results.append({
+                "title": r.get("title", ""),
+                "url": url,
+                "content": full_content,
+                "snippet": snippet[:500],    # snippet ngắn, chỉ lưu 500 chars
+                "has_full_content": bool(cleaned_raw),
+                "score": _score_result(url, base_score=r.get("score", 0.75)),
+            })
+        return results
+
+    # Tất cả key đều lỗi
+    logger.error(f"[Tavily] TẤT CẢ {len(TAVILY_POOL_KEYS)} key đều lỗi cho query: {query[:60]}...")
+    return []
 
 
 def search_tavily_gov(query: str) -> list[dict]:
@@ -528,7 +550,7 @@ def web_search(query: str) -> list[dict]:
                 f_general = ex.submit(search_tavily, query, 5)
                 f_gov     = ex.submit(search_tavily_gov, query)
                 
-                for future in as_completed([f_general, f_gov], timeout=15):
+                for future in as_completed([f_general, f_gov], timeout=18):
                     res = future.result()
                     if res:
                         for r in res:
