@@ -140,7 +140,7 @@ class QueryAgent(BaseAgent):
             elif isinstance(item, str) and item.strip():
                 search_queries.append(item.strip())
                 
-        # Giữ giới hạn trên là 3 để đảm bảo an toàn
+        # Giữ giới hạn trên là 3 để tiết kiệm Tavily credits (query dài + chất lượng > nhiều query cụt)
         search_queries = search_queries[:3]
         if not search_queries:
             search_queries = [user_input]
@@ -206,12 +206,12 @@ class QueryAgent(BaseAgent):
             or r.get("has_full_content")
         ]
 
-        # Lấy top 10 bài có điểm Tavily cao nhất để crawl nội dung
+        # Lấy top 12 bài có điểm Tavily cao nhất để crawl nội dung
         sorted_results = sorted(
             filtered_results,
             key=lambda x: x.get("score", 0),
             reverse=True,
-        )[:10]
+        )[:12]
 
         crawled_contents = []
         with ThreadPoolExecutor(max_workers=5) as executor:

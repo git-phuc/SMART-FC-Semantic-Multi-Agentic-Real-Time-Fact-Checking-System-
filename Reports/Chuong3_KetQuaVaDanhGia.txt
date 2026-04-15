@@ -1,0 +1,28 @@
+CHƯƠNG 3: KẾT QUẢ THỬ NGHIỆM VÀ ĐÁNH GIÁ
+
+3.1. Thiết lập thực nghiệm và Các chỉ số đánh giá hiệu năng
+Quá trình thử nghiệm mô hình SMART-FC (Semantic Multi-Agentic Real-Time Fact-Checking) được tiến hành đo lường trên bộ dữ liệu kiểm chứng đa miền. Các chỉ số hiệu năng chính (Performance Metrics) tập trung vào 4 khía cạnh:
+- Độ chính xác (Accuracy): Tỉ lệ nhãn (THẬT/GIẢ/CHƯA XÁC ĐỊNH) do mô hình tự động phán chiếu trùng khớp với nhãn Ground-Truth (Label) của bộ dữ liệu.
+- Thời gian trễ (Latency) và Tốc độ xử lý: Đánh giá thời gian hoàn thành một truy vấn nhờ bộ đệm Semantic Cache (trung bình 1-2s cho Cache Hit) so với việc chạy qua toàn bộ sơ đồ đồ thị LangGraph (thường mất một khoảng thời gian đáng kể từ 30s-100s do độ trễ lấy dữ liệu Internet).
+- Tỉ lệ F1-Score: Đánh giá sự cần bằng giữa độ nhạy (Recall) và Độ chuẩn xác (Precision) cho các phân lớp THẬT và GIẢ, đặc biệt hữu ích trong các vùng thông tin mất cân bằng.
+- Tỉ lệ kích hoạt thành công Agentic Feedback Loop: Đo lường số lần Agent 3 kích hoạt tín hiệu `request_deep_search` giúp khắc phục các ca khó không thể tra cứu một lần.
+
+3.2. Phân tích các trường hợp kiểm chứng thành công
+Hệ thống đạt tỉ lệ thành công tương đối lớn đối với các thể loại tin đồn, tin giả hoặc tin chính thống được loan tải gần đây nhờ các ưu điểm sau:
+- Khả năng chống ảo giác (Anti-Hallucination): Hoạt động cực kỳ hiệu quả khi Agent 3 bị ép chặt trong phạm vi thông tin được chiết xuất bởi Agent 2 và các nguồn URL xác thực do Agent 1 mang về.
+- Khúc xạ góc nhìn đa chiều: Khi câu hỏi có tính nhập nhằng, bộ tác tử tự động chẻ nhỏ query thành 3 câu hỏi nhánh và thu thập đồng thời từ nhiều nguồn báo chí, cho phép mô hình nhìn rõ sự mâu thuẫn trong tin giả tinh vi.
+
+3.3. Phân tích nguyên nhân thất bại và Điểm nghẽn với bộ dữ liệu AAAI-25
+Mặc dù đạt được những độ chính xác tốt ở nhiều ca, quá trình đánh giá (benchmarking) đã ghi nhận một tỷ lệ thất bại nhất định và những gián đoạn hệ thống. Dựa trên quá trình kiểm vết (Tracing) hành vi Pipeline và các tối ưu hóa thời gian thực (Latency Optimization), các nguyên nhân thất bại chính đối với bộ dữ liệu AAAI-25 bao gồm:
+
+1. Rào cản hạn mức kết nối mạng (API Rate Limits và Network Latency)
+Bộ dữ liệu AAAI-25 có số lượng mẫu đánh giá lớn (gần 400 câu truy vấn). Việc mô hình liên tục mở đa luồng quét tìm tin tức dầy đặc đã va phải tường chặn giới hạn truy cập (Rate Limit) từ nhà cung cấp dịch vụ tìm kiếm ngoài (Tavily). Để xử lý vấn đề này, vòng đời kiểm chứng phải bị áp chế lại bằng thời gian trễ nghỉ nhịp giữa các phiên requests (Anti-spam delay), làm giảm tốc độ đánh giá diện rộng.
+
+2. Trở ngại Quyền truy cập luồng dữ liệu (Data Permission & I/O Locking)
+Trong quá trình vòng lặp chạy tự động đổ dữ liệu ngược về các file tổng hợp (.csv), xung đột ghi chép (Permission Error) đã xảy ra do hành vi bị treo file từ các phần mềm ngoại vi (như việc người dùng đang mở Excel để giám sát). Hệ thống phải xử lý bằng cách tạo ra các điểm lưu trung gian (.tmp.csv) để bảo toàn nhãn dữ liệu qua từng bước.
+
+3. Điểm mù trên nguồn tin chưa có độ phủ (Unverifiable Data)
+Đối với những dữ kiện mang tính cá nhân, tin đồn địa phương hoặc mẩu tin chưa được báo chí chính thống đăng tải, đặc thù cào web không mang lại bất cứ văn bản (context) hợp lệ nào. Cấu trúc Rule Engine tại Reasoning Agent (Agent 3) gặp khó khăn vì bị thâm hụt chứng cứ (Layer 1 Filtering trả về nguồn rỗng), buộc quy trình phải nhận định thành "CHƯA XÁC ĐỊNH".
+
+4. Kẹt trong vòng lặp bất khả thi do góc xoáy truy vấn
+Tính năng Agentic Feedback Loop cho phép Agent 3 trả ngược quyết định lại cho Agent 1 nếu tìm kiếm nhầm hướng là một mũi giáo sắc. Tuy nhiên, điều này tạo ra một tỷ lệ thất bại nhất định trên tập AAAI-25 khi Agent 3 ép hướng tìm sang một góc độ mà chính bản thân nó vốn dĩ không tồn tại trên Internet. Các lượt gọi lại đụng tới Max Re-tries nhưng vẫn thất bại do thực sự không có bài báo nào thỏa mãn ý định tìm kiếm sâu đó.

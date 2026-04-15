@@ -274,10 +274,13 @@ if prompt := st.chat_input("Nhập tin đồn bạn muốn kiểm chứng..."):
                     log_container.markdown("🌐 **[Agent 1 — WebSearch]** Đang tìm kiếm trên Internet (Tavily API) và làm sạch nội dung...")
                 elif elapsed < 25:
                     log_container.markdown("🧠 **[Agent 2 — ExtractorAgent]** Đang đọc hàng chục ngàn từ và trích xuất chứng cứ...")
-                elif elapsed < 40:
+                elif elapsed < 50:
                     log_container.markdown("⚖️ **[Agent 3 — ReasoningAgent]** Đang suy luận, đối chiếu các nguồn và xây dựng luận điểm...")
+                elif elapsed < 90:
+                    log_container.markdown("🤔 **Thinking...** Agent 3 đang phân tích sâu hoặc yêu cầu Agent 1 tìm kiếm thêm nguồn...")
                 else:
-                    log_container.markdown("✍️ **[Agent 3 — ReasoningAgent]** Sắp xong rồi, đang đưa ra phán quyết cuối cùng...")
+                    mins = int(elapsed // 60)
+                    log_container.markdown(f"🧠 **Deep Thinking... ({mins}m+)** Pipeline đang chạy vòng lặp phản hồi — tìm thêm bằng chứng để đưa ra phán quyết chính xác nhất...")
                 time.sleep(0.5)
 
             pipeline_thread.join()

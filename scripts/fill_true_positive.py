@@ -18,39 +18,36 @@ client = OpenAI(
 )
 MODEL = "gpt-4o-mini"
 
-# TẠO FILE MỚI, KHÔNG ĐỤNG VÀO FILE CŨ
-NEW_POSITIVE_FILE = os.path.join(os.path.dirname(__file__), "..", "Evaluation", "posetive-news-evaluation-new.csv")
+# UPDATE TRỰC TIẾP VÀO FILE POSITIVE
+NEW_POSITIVE_FILE = os.path.join(os.path.dirname(__file__), "..", "Evaluation", "Data", "Posetive", "posetive-news-evaluation.csv")
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept-Language": "vi-VN,vi;q=0.9,en;q=0.8",
 }
 
-TARGET = 100
+TARGET = 200
 
-MUTATION_PROMPT = """Bạn là chuyên gia tạo bộ dữ liệu chuẩn (Ground Truth) cho hệ thống Fact-checking.
-Mục tiêu: Đọc bài báo. Xét duyệt (Lọc) lấy tin Chính trị/Xã hội/Pháp luật Việt Nam. Sau đó TẠO RA 1 câu hỏi mang nhãn THẬT (Positive) với mức độ khó (1, 2, 3).
+MUTATION_PROMPT = """Bạn là người chuyên tạo kịch bản dữ liệu cho AI Fact-checking.
+Mục tiêu: Đọc bài báo, lọc lấy tin Chính trị/Xã hội Việt Nam, sau đó đóng vai một NGƯỜI DÙNG MẠNG XÃ HỘI (hoặc người dân bình thường) TRỰC TIẾP NHẮN TIN HỎI HỆ THỐNG AI về độ xác thực của thông tin.
 
-BƯỚC 1: LỌC NỘI DUNG (FILTERING)
-Bài báo PHẢI thuộc lĩnh vực: Chính trị, Xã hội, Pháp luật, An ninh Quốc phòng, hoặc Điều hành Nhà nước Việt Nam.
-Nếu là tin Giải trí, Showbiz, Thể thao, Quốc tế vô thưởng vô phạt, hoặc quảng cáo doanh nghiệp -> Trả về JSON: {"status": "REJECT", "reason": "Không thuộc lĩnh vực chính trị xã hội"}
+BƯỚC 1: LỌC NỘI DUNG
+Chỉ lấy tin: Chính trị, Xã hội, Pháp luật vĩ mô. (Từ chối Showbiz, Thể thao, Quốc tế xa lạ). Nếu từ chối -> {"status": "REJECT", "reason": "Ko phù hợp"}
 
-BƯỚC 2: TẠO CÂU HỎI NHÃN "THẬT" (POSITIVE) CHÍNH XÁC 100%
-Hãy chọn ngẫu nhiên một trong 3 mức độ khó sau để đặt câu hỏi (Đảm bảo dữ liệu đa dạng khó-dễ):
-- Mức 1 (Dễ): Hỏi về sự kiện cốt lõi, tiêu đề chính của bài. Người bình thường chỉ cần đọc lướt tiêu đề là biết đúng. 
-  (VD: "Anh ơi kiểm chứng giúp em có phải kỳ họp Quốc hội sáng nay vừa bế mạc không? Thật, giả hay chưa xác định?")
-- Mức 2 (Trung bình): Hỏi về một CHI TIẾT CỤ THỂ (ngân sách dự chi, số liệu thống kê, tên quan chức phụ xử lý). AI phải đọc sâu vào thân bài mới thấy.
-  (VD: "Em nghe đồn ngân sách cấp cho dự án cầu X là 1.500 tỷ đồng, thông tin này thật hay giả vậy?")
-- Mức 3 (Khó): Lấy một điểm nhỏ giấu kỹ trong bài (một quy định ngách, một câu phát biểu nhỏ giọt cuối bài). Dạng này kiểm tra khả năng Context cực sâu của AI.
+BƯỚC 2: TẠO CÂU HỎI NHÃN "THẬT" (POSITIVE)
+Hãy đóng vai một người dân bình thường, ngây ngô và đầy tò mò. Viết một câu hỏi (80 - 150 ký tự) tuân thủ:
+- Giọng điệu TỰ NHIÊN, CỰC KỲ ĐỜI THƯỜNG (ví dụ: "Bác ơi", "Alo", "Anh em cho hỏi", "Nghe nói", "Sáng nay thấy báo đăng", "Ông chú em bảo..."). Thêm chút cảm xúc kiểu tò mò, hoang mang.
+- Luôn lấy một thông tin CHÍNH XÁC CÓ TRONG BÀI để hỏi.
+- Trong câu hỏi PHẢI chứa một trong các cụm từ kết thúc sau: "đúng không", "thật không", "thật hay giả", "xác minh giúp tôi".
 
-LUẬT BẮT BUỘC KHI TẠO CÂU HỎI:
-- Mọi chi tiết (số liệu, tên, luật) trong câu hỏi PHẢI ĐÚNG HOÀN TOÀN so với bài báo. Tuyệt đối không thay đổi thông tin.
-- Cuối câu hỏi luôn chêm mồi là đi hỏi AI: "Tin này Thật, giả hay chưa xác định?"
+VD 1: "Các bác ơi em nghe đồn sắp tới cấm tiệt xe máy vào Vành đai 1 từ 1/7/2026, tin này đúng không vậy?"
+VD 2: "Bạn AI xác minh giúp tao vụ thủ tướng mới duyệt ngân sách làm cao tốc 10.000 tỷ đồng thật hay xạo vậy?"
+VD 3: "Alo ad ơi, báo chí giật tít bắt giam chủ tịch HUD vì lừa đảo 150 tỷ, vụ này có thật hay giả?"
 
 BƯỚC 3: TRẢ VỀ DUY NHẤT 1 KHỐI JSON:
 {
   "status": "ACCEPT",
-  "difficulty_level": <1, 2, hoac 3>,
+  "difficulty_level": 2,
   "question": "<CÂU HỎI ĐƯỢC TẠO>"
 }
 KHÔNG GHI THÊM BẤT CỨ TEXT NÀO NGOÀI JSON!"""
@@ -162,13 +159,27 @@ def main():
     print("🔄  SINH 100 DỮ LIỆU POSITIVE (THẬT) KÈM MỨC ĐỘ KHÓ 1-2-3 ")
     print("=" * 65)
 
-    need = TARGET
-    
-    # Chuẩn bị file CSV mới
-    fieldnames = ['index', 'title', 'question', 'Link bài gốc', 'label', 'mutation_level', 'Decision', 'output_1', 'link_1', 'output_2', 'link_2', 'output_3', 'link_3', 'label_model']
+    fieldnames = ['index', 'title', 'question', 'Link bài viết', 'label', 'Decision', 'output_1', 'link_1', 'output_2', 'link_2', 'output_3', 'link_3', 'label_model']
     
     new_rows = []
     existing_titles = set()
+    max_index = 0
+    total_existing_rows = 0
+
+    if os.path.exists(NEW_POSITIVE_FILE):
+        with open(NEW_POSITIVE_FILE, "r", encoding="utf-8-sig") as f:
+            for row in csv.DictReader(f):
+                existing_titles.add(row.get("title", "").strip().lower())
+                total_existing_rows += 1
+                try: max_index = max(max_index, int(row.get("index", 0)))
+                except: pass
+
+    need = TARGET - total_existing_rows
+    if need <= 0:
+        print(f"🎉 Đã đủ {TARGET} samples trong CSV! Không cần chạy thêm.")
+        return
+        
+    print(f"📊 Đã có {max_index} samples. Cần thu thập thêm {need} bài nữa.")
 
     print("🕷️  BƯỚC 1: Thu thập links bài báo chính thống...")
     all_links = []
@@ -205,14 +216,14 @@ def main():
             time.sleep(0.5)
             continue
 
+        max_index += 1
         row = {fn: "" for fn in fieldnames}
         row.update({
-            "index": len(new_rows) + 1,
+            "index": max_index,
             "title": title,
             "question": q,
-            "Link bài gốc": url,
-            "label": "THẬT",  # Nhãn cố định THẬT
-            "mutation_level": level,  # Mức độ khó (1,2,3)
+            "Link bài viết": url,
+            "label": "THẬT",
         })
         new_rows.append(row)
         existing_titles.add(title.strip().lower())
@@ -223,9 +234,11 @@ def main():
         print("\n❌ Không sinh được bài mới nào.")
         return
 
-    with open(NEW_POSITIVE_FILE, "w", newline="", encoding="utf-8-sig") as f:
+    mode = "a" if max_index > len(new_rows) else "w"
+    with open(NEW_POSITIVE_FILE, mode, newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames)
-        w.writeheader()
+        if mode == "w":
+            w.writeheader()
         w.writerows(new_rows)
 
     print(f"\n{'='*65}")

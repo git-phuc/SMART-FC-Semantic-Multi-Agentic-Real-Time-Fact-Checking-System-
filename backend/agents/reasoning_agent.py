@@ -1,12 +1,9 @@
 """
 Agent 3: Reasoning & Verdict.
-Nhận danh sách tóm tắt từ Agent 2 → Lọc bài liên quan → Suy luận → Phán quyết.
-
-Nguyên tắc: Agent 3 chịu trách nhiệm TOÀN BỘ việc phán xét:
-1. Lọc bài nào liên quan / reject bài không liên quan
-2. Tự đánh giá claim có thể kiểm chứng không
-3. Đánh giá credibility nguồn
-4. Viết chain_of_thought → suy luận → verdict THẬT / GIẢ / CHƯA XÁC ĐỊNH
+Phiên bản v3 — Agentic Feedback Loop:
+  - Không còn `if rule_applied == "RULE 4" and retry_count <= 1` cứng.
+  - Đọc `feedback_signal` từ model để quyết định có trigger loop không.
+  - Model tự quyết định khi nào cần search lại và tìm theo hướng nào.
 """
 
 import json
@@ -20,10 +17,9 @@ class ReasoningAgent(BaseAgent):
     """
     Agent cuối cùng trong pipeline.
     - Nhận danh sách tóm tắt từ Agent 2
-    - Tự lọc bài liên quan / không liên quan
-    - Tự đánh giá khả năng kiểm chứng của claim
-    - Viết chain_of_thought trước khi kết luận (giảm hallucination)
+    - Tự lọc nguồn → đọc bối cảnh → đối chiếu bằng chứng → suy luận
     - Đưa ra verdict: THẬT / GIẢ / CHƯA XÁC ĐỊNH
+    - Tự quyết định có cần yêu cầu Agent 1 search lại không (feedback_signal)
     """
 
     def __init__(self):
@@ -31,38 +27,25 @@ class ReasoningAgent(BaseAgent):
 
     def run(self, state: dict) -> dict:
         """
-        Lọc + Suy luận + Phán định cuối cùng.
+        Suy luận + Phán định + Phát tín hiệu feedback nếu cần.
 
         Args:
             state: Phải chứa keys: user_input, extracted_info
 
         Returns:
-            State đã cập nhật với: verdict
+            State đã cập nhật với: verdict, feedback_to_agent1
         """
         user_input = state.get("user_input", "")
         extracted_info = state.get("extracted_info", {})
         crawled_contents = state.get("crawled_contents", [])
 
-        self.add_log(state, "Starting filtering & reasoning process")
+        self.add_log(state, "Starting reasoning process")
 
         # Chuẩn bị text từ extracted_info
-        if extracted_info.get("parse_error"):
-            extracted_info_text = extracted_info.get("raw_response", "")
-            if crawled_contents:
-                extracted_info_text += "\n\n## URLs THẬT (CHỈ dùng các URLs này):\n"
-                for c in crawled_contents:
-                    extracted_info_text += f"- [{c.get('title', 'N/A')}]({c.get('url', '')})\n"
-        else:
-            extracted_info_text = json.dumps(extracted_info, ensure_ascii=False, indent=2)
+        extracted_info_text = self._prepare_extracted_text(extracted_info, crawled_contents)
 
-            # Bổ sung danh sách URL thật phòng trường hợp LLM bỏ sót
-            if crawled_contents:
-                extracted_info_text += "\n\n## DANH SÁCH URL THẬT (chỉ dùng URLs này, KHÔNG tự tạo URL):\n"
-                for c in crawled_contents:
-                    extracted_info_text += f"- {c.get('title', 'N/A')}: {c.get('url', '')}\n"
-
-        # Gọi LLM để lọc + suy luận
-        log_agent_step(self.logger, self.name, "Filtering sources & reasoning (with chain of thought)")
+        # Gọi LLM suy luận
+        log_agent_step(self.logger, self.name, "Reasoning with chain of thought")
 
         user_prompt = USER_PROMPT_TEMPLATE.format(
             claim=user_input,
@@ -72,57 +55,91 @@ class ReasoningAgent(BaseAgent):
         llm_response = self.call_llm(SYSTEM_PROMPT, user_prompt)
         verdict = self.parse_json_response(llm_response)
 
-        # Đảm bảo verdict có đủ các fields cần thiết
+        # Validate và fill defaults
         verdict = self._validate_verdict(verdict)
 
-        # Log chain_of_thought để dễ debug
+        # Log chain_of_thought để debug
         cot = verdict.get("chain_of_thought", "")
         if cot:
-            self.logger.info(f"[{self.name}] 🧠 Chain of Thought: {cot[:200]}...")
+            self.logger.info(f"[{self.name}] 🧠 Chain of Thought: {cot[:300]}...")
 
-        # Post-process: thay URLs bịa bằng URLs thật từ crawled_contents
+        # Fix URLs bịa → URLs thật
         if crawled_contents:
             verdict = self._fix_urls(verdict, crawled_contents)
 
-        # Thêm vào Agent 3 (ReasoningAgent) ở sau phần parse JSON
-        rule_applied = verdict.get("rule_applied", "")
+        # === ĐỌC FEEDBACK SIGNAL TỪ MODEL ===
+        # Thay vì code cứng "if RULE 4 and retry_count <= 1",
+        # giờ agent lắng nghe quyết định của model.
+        feedback_signal = verdict.get("feedback_signal", {})
+        request_deep_search = feedback_signal.get("request_deep_search", False)
+        suggested_angle = feedback_signal.get("suggested_search_angle", "")
+        signal_reason = feedback_signal.get("reason", "")
+
         retry_count = state.get("retry_count", 0)
-        cot = verdict.get("chain_of_thought", "")
-        
-        if rule_applied == "RULE 4" and retry_count <= 1:
+        MAX_RETRIES = 2  # Hard ceiling để tránh infinite loop trong mọi trường hợp
+
+        if request_deep_search and retry_count < MAX_RETRIES:
             feedback_msg = (
-                f"Trường hợp chưa xác định đợt {retry_count}. "
-                f"Lý do: {verdict.get('summary', 'Thiếu thông tin')} - "
-                f"Suy luận AI: {cot}. "
-                f"Đề nghị đổi từ khóa hẹp hơn, hoặc tìm theo chủ thể khác liên quan."
+                f"Agent 3 yêu cầu tìm kiếm lại. "
+                f"Lý do: {signal_reason}. "
+                f"Góc độ tìm kiếm đề xuất: {suggested_angle}"
             )
             state["feedback_to_agent1"] = feedback_msg
-            self.logger.warning(f"[{self.name}] 🔄 Kích hoạt Feedback Loop (Vòng {retry_count})")
-            self.add_log(state, f"Tín hiệu quay xe 🔄: {feedback_msg}")
+            self.logger.warning(
+                f"[{self.name}] 🔄 Kích hoạt Feedback Loop theo yêu cầu model "
+                f"(Vòng {retry_count + 1}/{MAX_RETRIES}): {suggested_angle[:100]}"
+            )
+            self.add_log(state, f"🔄 Model yêu cầu search lại: {feedback_msg}")
         else:
-            # Nếu đã lặp xong hoặc ra rule khác hợp lệ, xóa feedback đi
+            if request_deep_search and retry_count >= MAX_RETRIES:
+                self.logger.warning(
+                    f"[{self.name}] ⛔ Model muốn search lại nhưng đã đạt MAX_RETRIES ({MAX_RETRIES}). "
+                    f"Chốt verdict hiện tại."
+                )
+            # Xóa feedback — pipeline kết thúc ở đây
             state["feedback_to_agent1"] = ""
-            
+
         state["verdict"] = verdict
 
+        # Log tóm tắt kết quả
         accepted_count = len(verdict.get("filtering", {}).get("sources_accepted", []))
         rejected_count = len(verdict.get("filtering", {}).get("sources_rejected", []))
-        is_verifiable = verdict.get("verifiability_assessment", {}).get("is_verifiable", "N/A")
+        claim_context = verdict.get("verifiability_assessment", {}).get("claim_context", "N/A")
 
         self.add_log(
             state,
             f"Verdict: {verdict.get('verdict', 'N/A')} "
             f"(Confidence: {verdict.get('confidence_score', 'N/A')}) | "
+            f"Rule: {verdict.get('rule_applied', 'N/A')} | "
             f"Sources: {accepted_count} accepted / {rejected_count} rejected | "
-            f"Verifiable: {is_verifiable}"
+            f"Context: {claim_context[:60]} | "
+            f"Deep search: {request_deep_search}"
         )
 
         return state
 
+    def _prepare_extracted_text(self, extracted_info: dict, crawled_contents: list) -> str:
+        """
+        Chuẩn bị text từ extracted_info để đưa vào prompt.
+        Bổ sung danh sách URL thật để model không tự tạo URL.
+        """
+        if extracted_info.get("parse_error"):
+            text = extracted_info.get("raw_response", "")
+        else:
+            text = json.dumps(extracted_info, ensure_ascii=False, indent=2)
+
+        # Luôn bổ sung danh sách URL thật — phòng tránh hallucination URL
+        if crawled_contents:
+            text += "\n\n## DANH SÁCH URL THẬT (chỉ dùng các URLs này, KHÔNG tự tạo URL):\n"
+            for c in crawled_contents:
+                text += f"- {c.get('title', 'N/A')}: {c.get('url', '')}\n"
+
+        return text
+
     def _validate_verdict(self, verdict: dict) -> dict:
         """
-        Đảm bảo verdict dict có đủ các fields cần thiết.
-        Thêm default values nếu thiếu — bao gồm chain_of_thought.
+        Đảm bảo verdict có đủ fields cần thiết.
+        Thêm defaults nếu thiếu — bao gồm feedback_signal và claim_context mới.
         """
         defaults = {
             "chain_of_thought": "",
@@ -134,6 +151,7 @@ class ReasoningAgent(BaseAgent):
             },
             "verifiability_assessment": {
                 "is_verifiable": False,
+                "claim_context": "Không xác định được bối cảnh",
                 "reasoning": "Không đủ thông tin để đánh giá",
             },
             "verdict": "CHƯA XÁC ĐỊNH",
@@ -146,10 +164,15 @@ class ReasoningAgent(BaseAgent):
             "divergence_details": None,
             "arguments": [],
             "reasoning": {
-                "step1_filtering": "Không có dữ liệu",
-                "step2_verifiability": "Không có dữ liệu",
-                "step3_detail_comparison": "N/A",
-                "step4_rule_selection": "Không có dữ liệu",
+                "layer1_filtering": "Không có dữ liệu",
+                "layer2_context": "Không có dữ liệu",
+                "layer3_evidence": "Không có dữ liệu",
+                "layer4_verdict": "Không có dữ liệu",
+            },
+            "feedback_signal": {
+                "request_deep_search": False,
+                "suggested_search_angle": None,
+                "reason": "Verdict đã đủ tự tin",
             },
             "recommendation": "Hãy tìm hiểu thêm từ các nguồn tin chính thống.",
         }
@@ -171,13 +194,11 @@ class ReasoningAgent(BaseAgent):
         """
         from urllib.parse import urlparse
 
-        # Map: URL thật → title (lowercase)
         real_urls = {
             c.get("url", ""): c.get("title", "").lower()
             for c in crawled_contents if c.get("url")
         }
 
-        # Map: domain → URL thật
         domains = {}
         for url in real_urls:
             domain = urlparse(url).netloc.replace("www.", "")
@@ -211,12 +232,10 @@ class ReasoningAgent(BaseAgent):
                         best_score = common
                         best_url = url
 
-                # Chỉ chấp nhận nếu có ít nhất 1 từ khớp
                 if best_url and best_score >= 1:
                     assigned_urls.add(best_url)
                     return best_url
 
-            # Không tìm được match → trả rỗng, không gán bừa
             return ""
 
         for arg in verdict.get("arguments", []):
@@ -227,7 +246,7 @@ class ReasoningAgent(BaseAgent):
                 if fixed != claimed:
                     log_agent_step(
                         self.logger, self.name, "Fixed URL",
-                        f"{claimed[:50]} → {fixed[:50] if fixed else '(empty — no match found)'}"
+                        f"{claimed[:50]} → {fixed[:50] if fixed else '(empty)'}"
                     )
                 arg["source_url"] = fixed
 

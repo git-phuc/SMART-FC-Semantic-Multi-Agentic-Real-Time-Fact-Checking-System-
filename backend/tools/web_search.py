@@ -409,7 +409,7 @@ def search_tavily_gov(query: str) -> list[dict]:
     """
     return search_tavily(
         query,
-        num_results=4,
+        num_results=5,
         include_domains=GOV_DOMAINS + TRUSTED_DOMAINS,
     )
 
@@ -547,7 +547,7 @@ def web_search(query: str) -> list[dict]:
             all_search_results, seen_urls = [], set()
             with ThreadPoolExecutor(max_workers=2) as ex:
                 # Chạy song song search rộng và search sâu vào nguồn gov
-                f_general = ex.submit(search_tavily, query, 5)
+                f_general = ex.submit(search_tavily, query, 7)
                 f_gov     = ex.submit(search_tavily_gov, query)
                 
                 for future in as_completed([f_general, f_gov], timeout=18):
@@ -561,7 +561,7 @@ def web_search(query: str) -> list[dict]:
             
             if all_search_results:
                 all_search_results.sort(key=lambda x: x["score"], reverse=True)
-                results = all_search_results[:6]
+                results = all_search_results[:8]
                 engine = "Tavily"
         except Exception as e:
             logger.warning(f"[WebSearch] Tavily request failed: {e}")
