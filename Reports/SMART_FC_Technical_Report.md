@@ -217,20 +217,22 @@ Trong đó:
 
 ---
 
-### 2.3.4. AGENT 2: Extractor Agent (Google Gemini 2.5 Flash Lite)
+### 2.3.4. AGENT 2: Information Extractor & Factual Summarizer (Google Gemini 2.5 Flash Lite)
 
-**Vai trò:** Nhà máy lọc thô theo triết lý Anti-Swelling.
+**Vai trò:** Nhà máy lọc thô thông tin tự động theo triết lý Anti-Swelling qua 3 luồng xử lý cốt lõi.
 
 **Bước 1 — Top-K Source Filtering:**
-Chọn Top 5 nguồn có Trust Score cao nhất từ crawled_contents.
+- **Top 5 Source Filtering (via Trust Score):** Lọc và chọn trực tiếp Top 5 nguồn có điểm tín nhiệm (Trust Score) cao nhất từ danh sách truy xuất.
 
 **Bước 2 — Data Formatting & Prompt Structuring:**
-1. Data Unpacking: Giải nén dict các trường
-2. Context Serialization: Nối 5 văn bản thành cuộn Markdown có ranh giới
-3. Dynamic Prompt Injection: Nhúng vào template với {claim}, {crawled_data}, {source_count}=5
+- **Data Unpacking:** Mở nén và dàn phẳng từ điển dữ liệu (dict) các trường thô.
+- **Context Serialization:** Nối 5 văn bản thành một cuộn khối Markdown liền mạch có ranh giới để ngăn nhiễu sóng (Cross-contamination) giữa các nguồn báo (`### Nguồn 1`).
+- **Dynamic Prompt Injection:** Nhúng linh hoạt dữ liệu vào template hệ thống với các khóa biến `{claim}`, `{crawled_data}`, `{source_count}=5`.
 
-**Bước 3 — Holistic Extraction & Anti-Swelling:**
-Toàn bộ khối văn bản (~50,000–100,000 ký tự) nạp vào Gemini Flash — không có bước chunking. Zero-Judgment Constraint: tuyệt đối không phán xét Thật/Giả.
+**Bước 3 — Holistic Extraction & Anti-Swelling [LLM: Gemini-2.5-flash-lite 1M Wtoken]:**
+- **Holistic Context Processing:** Toàn bộ khối văn bản (~50,000–100,000 ký tự) được nạp trọn một lần vào mô hình, loại bỏ hoàn toàn tiến trình băm nhỏ (chunking) truyền thống nhằm bảo toàn mạch liên kết ngữ nghĩa.
+- **Structured Fact Extraction:** Rút trích các chi tiết, lập luận gốc lõi của mỗi bên nhà báo thành các sự kiện được cấu trúc hoá chặt chẽ.
+- **Zero-Judgment Prompting:** Ép buộc mô hình thiết lập Zero-Judgment: chỉ trích xuất cơ học, tuyệt đối không đưa ra kết luận hoặc phán xét Thật/Giả đối với lời đồn, giữ trung lập và sạch sẽ môi trường cho Agent 3 hoạt động.
 
 Output JSON chuẩn hóa:
 ```json

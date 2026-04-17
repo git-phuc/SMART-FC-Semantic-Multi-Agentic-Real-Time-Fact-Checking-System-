@@ -28,18 +28,24 @@ Hệ thống sử dụng kiến trúc StateGraph (máy trạng thái) để dẫ
   * Dùng kĩ năng `ThreadPoolExecutor` để lấy bộ 1-3 queries bung ra công cụ Tavily Search đồng thời. Sau đó gom tất lưới lại, loại bỏ các đường link trùng lặp (duplication removal).
   * Check xem nếu API của Tavily đủ uy tín trích hẳn một bức tường rào toàn rễ chữ (`has_full_content`), A1 sẽ thu thập lấy text ngay lập tức mà khỏi cần mò mẫm vô link.
 * **Bước 3 (Spider Crawl tàn khốc):**
+
   * Lọc bớt các domain không thể bóc như Youtube, Zalo, Tiktok... (vì toàn video hay bị chặn bắt dữ liệu).
   * Rút ra bảng xếp hạng dựa vào *Tavily Score*, lấy đúng **10 bài viết tín nhất** để cho vào hàng đợi (Queue).
   * Chạy song song thọc thẳng vào 10 URLs đó (thông qua Web Scraper Tool) để móc lõi từng dòng văn bản (paragraph) bên trong mang về. Cuối cùng đóng cái túi búa xua (chứa chữ thô + URL gốc) chuyển sang A2.
 
-### AGENT 2: Extractor Agent (Đọc hiểu thông sâu & Chắt lọc dữ liệu)
-Lý do có A2 là vì nạp cả cục văn bản khổng lồ từ chục website vào não lõi (A3) thì sẽ sinh ảo giác (Hallucination) mất tập trung. A2 là một biên tập viên tóm tắt bài giỏi.
+### AGENT 2: Information Extractor & Factual Summarizer
+Lý do có A2 là vì nạp cả cục văn bản khổng lồ từ chục website vào não lõi (A3) thì sẽ sinh ảo giác (Hallucination) nâng cao. A2 đóng vai trò thiết yếu trong việc chắt lọc dữ liệu theo 3 bước cốt lõi:
 
-* **Bước 1 (Lựa chọn tinh hoa thay vì số lượng):** A2 có lòng tham mức độ, nó chỉ lấy thẳng **Top 5 nguồn** đạt tiêu chí cao nhất mà A1 vừa bàn giao lại.
-* **Bước 2 (Xử lý tập trung và Trích xuất tin tức):**
-  * Chuyển hóa 5 mớ hỗn mang thành định dạng cực kì rõ rệt: `### Nguồn 1: (Title... Content...)` v.v.
-  * Gọi một LLM có ngữ cảnh siêu khủng (Max context Tokens lớn như Gemini Flash). Nó dặn LLM: "Hãy đọc và lọc lấy đúng chi tiết liên quan đến tin đồn người dùng đưa, cái gì không liên quan vứt hết!".
-  * Đầu ra không còn mớ hỗn độn thô ráo, mà là các thông tin tinh luyện cực kì sát với ý bài.
+* **Bước 1: Top-K Source Filtering**
+  * **Top 5 Source Filtering (via Trust Score):** Lựa chọn tinh hoa thay vì số lượng, A2 chỉ chắt lọc thẳng Top 5 nguồn đạt điểm tín nhiệm cao nhất mà A1 vừa bàn giao.
+* **Bước 2: Data Formatting & Prompt Structuring**
+  * **Data Unpacking:** Mở gói dữ liệu từ các nguồn thu thập được.
+  * **Context Serialization:** Chuyển hóa 5 mớ hỗn mang thành chuỗi ngữ cảnh được đánh dấu cực kỳ rõ rệt: `### Nguồn 1: ... Nguồn 2: ...`.
+  * **Dynamic Prompt Injection:** Bơm linh hoạt các nội dung vừa được cấu trúc vào Prompt để đệ trình cho tác tử.
+* **Bước 3: Holistic Extraction & Anti-Swelling [LLM: Gemini-2.5-flash-lite 1M Wtoken]**
+  * **Holistic Context Processing:** Đọc toàn bộ khối văn bản liền mạch nhờ cửa sổ Max Context Token cực khủng thay vì băm nhỏ bài viết, giúp chống lại hiện tượng Mù ngữ cảnh.
+  * **Structured Fact Extraction:** Trích xuất các chi tiết, bằng chứng cốt lõi thành thông tin tinh luyện cực kì sát ý báo dưới dạng JSON.
+  * **Zero-Judgment Prompting:** AI bị ràng buộc tuyệt đối: chỉ lọc thông tin, **không đưa ra phán xét Thật/Giả** ở khu vực này, để dành nhiệm vụ đó cho A3.
 
 ### AGENT 3: Reasoning Agent (Toà án Tối cao Suy luận & Phán Quyết)
 Đây là hạt nhân của toàn khối. A3 đảm nhiệm chức năng lập luận từng bước (Chain-of-Thought / CoT), lật vấn đề theo nhiều chiều rồi hẵng dập búa.

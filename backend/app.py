@@ -164,7 +164,7 @@ def render_inference_time(time_taken: float, from_cache: bool = False):
 # ============================================================
 # Hàm render kết quả verdict
 # ============================================================
-def render_verdict(verdict_data: dict, time_taken: float = 0.0, from_cache: bool = False):
+def render_verdict(verdict_data: dict, time_taken: float = 0.0, from_cache: bool = False, is_history: bool = False):
     # Hiển thị thời gian suy luận
     if time_taken > 0:
         render_inference_time(time_taken, from_cache)
@@ -214,26 +214,29 @@ def render_verdict(verdict_data: dict, time_taken: float = 0.0, from_cache: bool
         st.divider()
         st.markdown("#### 📝 Luận điểm & Bằng chứng")
         for i, arg in enumerate(display_arguments, 1):
-            with st.expander(f"{i}. {arg.get('title', 'Luận điểm')}", expanded=True):
+            with st.expander(f"{i}. {arg.get('title', 'Luận điểm')}", expanded=not is_history):
                 st.write(arg.get("content", ""))
                 if arg.get("evidence"):
                     st.caption(f"Trích dẫn: {arg.get('evidence')}")
                 st.markdown(f"Đọc thêm: [{arg.get('source_name', 'Nguồn')}]({arg.get('source_url')})")
 
     if verdict_data.get("recommendation"):
-        st.success(verdict_data.get("recommendation"))
+        with st.expander("💡 Khuyến nghị", expanded=not is_history):
+            st.markdown(verdict_data.get("recommendation"))
 
 
 # ============================================================
 # Hiển thị lịch sử tin nhắn
 # ============================================================
-for msg in st.session_state.messages:
+for i, msg in enumerate(st.session_state.messages):
+    is_latest = (i == len(st.session_state.messages) - 1)
     with st.chat_message(msg["role"]):
         if isinstance(msg["content"], dict):
             render_verdict(
                 msg["content"],
                 time_taken=msg.get("time_taken", 0.0),
                 from_cache=msg.get("from_cache", False),
+                is_history=not is_latest,
             )
         else:
             st.markdown(msg["content"])
@@ -268,19 +271,12 @@ if prompt := st.chat_input("Nhập tin đồn bạn muốn kiểm chứng..."):
 
             while pipeline_thread.is_alive():
                 elapsed = time.time() - start_time
-                if elapsed < 5:
-                    log_container.markdown("⏳ **[Agent 1 — QueryAgent]** Đang phân tích tin và tạo từ khóa tìm kiếm...")
-                elif elapsed < 12:
-                    log_container.markdown("🌐 **[Agent 1 — WebSearch]** Đang tìm kiếm trên Internet (Tavily API) và làm sạch nội dung...")
-                elif elapsed < 25:
-                    log_container.markdown("🧠 **[Agent 2 — ExtractorAgent]** Đang đọc hàng chục ngàn từ và trích xuất chứng cứ...")
-                elif elapsed < 50:
-                    log_container.markdown("⚖️ **[Agent 3 — ReasoningAgent]** Đang suy luận, đối chiếu các nguồn và xây dựng luận điểm...")
-                elif elapsed < 90:
-                    log_container.markdown("🤔 **Thinking...** Agent 3 đang phân tích sâu hoặc yêu cầu Agent 1 tìm kiếm thêm nguồn...")
+                if elapsed < 50:
+                    log_container.markdown("🤔 **Thinking...**")
                 else:
                     mins = int(elapsed // 60)
-                    log_container.markdown(f"🧠 **Deep Thinking... ({mins}m+)** Pipeline đang chạy vòng lặp phản hồi — tìm thêm bằng chứng để đưa ra phán quyết chính xác nhất...")
+                    secs = int(elapsed % 60)
+                    log_container.markdown(f"🧠 **Deep Thinking... ({mins}m{secs:02d}s)**")
                 time.sleep(0.5)
 
             pipeline_thread.join()
@@ -301,13 +297,12 @@ if prompt := st.chat_input("Nhập tin đồn bạn muốn kiểm chứng..."):
             verdict_data = final_state.get("verdict", {})
             from_cache = final_state.get("from_cache", False)
 
-            render_verdict(verdict_data, time_taken=time_taken, from_cache=from_cache)
-
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": verdict_data,
                 "time_taken": time_taken,
                 "from_cache": from_cache,
             })
+            st.rerun()
         else:
             st.warning("⚠️ Pipeline kết thúc nhưng không có kết quả. Vui lòng thử lại.")

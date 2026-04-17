@@ -50,11 +50,13 @@ Sơ đồ dưới đây bao quát toàn cảnh đường đi của một Claim t
         │                                                         │
         v  [ Dọn rác HTML ]                                       │
       ┌────────────────────────────────────────────────┐          │
-      │ 🤖 AGENT 2: EXTRACTOR AGENT (Gemini Flash)    │          │
+      │ 🤖 AGENT 2: INFORMATION EXTRACTOR & FACTUAL   │          │
+      │    SUMMARIZER (Gemini-2.5-flash-lite 1M)       │          │
       └────────────────────────────────────────────────┘          │
-        │ • Không bao giờ băm nhỏ bài viết như RAG truyền thống   │
-        │ • Tận dụng cửa sổ 1.000.000 Token nuốt gọn 5 link web   │
-        │ • Nén gộp lại: 5 bản Tóm tắt lõi hạch (JSON DB)         │
+        │ • Top-K Source Filtering (Top 5 qua Trust Score)        │
+        │ • Data Formatting & Prompt Structuring (Unpacking,...)  │
+        │ • Holistic Context Processing & Anti-Swelling           │
+        │ • Structured Fact Extraction & Zero-Judgment Prompting  │
         │                                                         │
         v  [ Nạp 5 bản tóm tắt + Câu gốc ]                        │
       ┌────────────────────────────────────────────────┐          │
