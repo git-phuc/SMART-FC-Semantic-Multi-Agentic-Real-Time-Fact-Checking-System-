@@ -110,22 +110,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# === Giao diện Sidebar ===
-with st.sidebar:
-    st.markdown("## 🧬 SMART-FC v5.0")
-    st.caption("Hệ thống điểm chuẩn kiểm chứng thông tin tự động tiếng Việt (NCKH). Vận hành dựa trên nền tảng Multi-Agentic thời gian thực.")
-    
-    st.divider()
-    st.markdown("### 🤖 Tri-Agent Mix-AI")
-    st.info("⚡ T.Truy vấn: **Groq Llama-3.1**")
-    st.success("🧠 T.Trích xuất: **Gemini 2.5 Flash Lite**")
-    st.error("⚖️ T.Suy luận: **OpenAI GPT-4o-Mini**")
-    
-    st.divider()
-    st.markdown("### ⚡ Công nghệ Nền tảng")
-    st.success("✔ Lớp đệm Vector-NER Cache kép")
-    st.success("✔ Luân chuyển API Round-Robin chống Rate limit")
-    st.success("✔ Web Crawler Bất đồng bộ (Tavily Fallback)")
 
 # === Giao diện chính ===
 st.title("🤖 SMART-FC: Hệ thống Kiểm chứng Tin giả")
